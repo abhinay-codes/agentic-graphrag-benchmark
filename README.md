@@ -112,3 +112,10 @@ Recent reliability work ensured:
 - GraphRAG quality is highly dependent on dataset/graph coverage.
 - Public benchmark results are point-in-time measurements, not universal claims.
 - A full live comparison requires a populated local TigerGraph instance and Ollama.
+
+## Demo & Submission
+- [Demo Script](docs/demo-script.md)
+- [Demo Checklist](docs/demo-checklist.md)
+- [Reproduction Guide](docs/reproduction.md)
+- [Submission Checklist](docs/submission-checklist.md)
+- [Presentation Outline](docs/presentation-outline.md)
