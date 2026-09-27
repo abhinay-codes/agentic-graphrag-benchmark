@@ -152,9 +152,54 @@ def test_evaluate_evidence_limits():
         ],
     )
 
-    # Evidence evaluation intentionally remains at 512.
+    # Evidence evaluation now uses 2048 to prevent truncation.
     tools.llm_client.generate.assert_called_with(
         unittest.mock.ANY,
         temperature=0.0,
-        options={"num_predict": 512},
+        options={"num_predict": 2048},
     )
+
+
+def test_insufficient_evidence_blocks_stop():
+    orchestrator = AgentOrchestrator()
+    # Mock LLM to always return "stop"
+    orchestrator.tools.llm_client.generate = unittest.mock.MagicMock(
+        return_value={
+            "response": '{"action": "stop", "reason": "done", "parameters": {}}'
+        }
+    )
+
+    state = AgentState(question_id="q", question="test", maximum_steps=3)
+    # Simulate an insufficient evaluation
+    state.evidence_evaluations.append({"status": "insufficient"})
+    state.missing_information = "Missing key facts"
+
+    orchestrator.run(state)
+
+    # It should have blocked the stop until max steps was reached
+    assert state.current_step == 3
+    # At max steps, it allows the stop action to proceed, so reason is "done" from the LLM
+    assert state.stopping_reason == "done"
+    assert any("Blocked premature stop" in sc for sc in state.strategy_changes)
+
+
+def test_sufficient_evidence_allows_stop():
+    orchestrator = AgentOrchestrator()
+    # Mock LLM to always return "stop"
+    orchestrator.tools.llm_client.generate = unittest.mock.MagicMock(
+        return_value={
+            "response": '{"action": "stop", "reason": "done", "parameters": {}}'
+        }
+    )
+
+    state = AgentState(question_id="q", question="test", maximum_steps=3)
+    # Simulate a sufficient evaluation
+    state.evidence_evaluations.append({"status": "sufficient"})
+    state.missing_information = "No issues identified."
+
+    orchestrator.run(state)
+
+    # It should have stopped on the first step
+    assert state.current_step == 1
+    assert state.stopping_reason == "done"
+    assert not any("Blocked premature stop" in sc for sc in state.strategy_changes)

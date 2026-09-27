@@ -1,3 +1,4 @@
+import re
 import time
 import json
 from typing import Dict, Any, List, Tuple
@@ -158,8 +159,11 @@ class AgentTools:
                 "JSON Output:"
             )
 
-            res = self.llm_client.generate(prompt, temperature=0.0, options={"num_predict": 512})
-            text_resp = res.get("response", "").strip()
+            res = self.llm_client.generate(prompt, temperature=0.0, options={"num_predict": 2048})
+            text_resp = res.get("response", "")
+
+            # Remove <think> blocks before parsing
+            text_resp = re.sub(r'<think>.*?</think>', '', text_resp, flags=re.DOTALL).strip()
 
             # Basic parsing of JSON
             try:

@@ -20,7 +20,7 @@ class AgentOrchestrator:
             "You must consider the evidence already collected.\n"
             "You must consider missing information.\n"
             "Choose the next action that is most useful.\n"
-            "Stop when evidence is sufficient.\n"
+            "If evidence is insufficient or missing_information is non-empty, do not stop. Investigate further using an appropriate retrieval tool. Only stop when the available evidence is sufficient to answer the question or when the maximum investigation steps have been reached.\n"
             "Do not repeat identical actions unnecessarily.\n\n"
             "Registered Actions:\n"
             "1. vector_search: Semantic retrieval (Input: 'query', 'top_k')\n"
@@ -42,6 +42,7 @@ class AgentOrchestrator:
             cand_count = len(state.candidate_evidence)
             coll_count = len(state.collected_evidence)
 
+            feedback = state.strategy_changes[-1] if state.strategy_changes else "None"
             summary = (
                 f"Question: {state.question}\n"
                 f"Current Step: {state.current_step}/{state.maximum_steps}\n"
@@ -49,6 +50,7 @@ class AgentOrchestrator:
                 f"Collected/Selected Evidence Chunks: {coll_count}\n"
                 f"Documents Discovered: {state.documents_discovered}\n"
                 f"Missing Information: {state.missing_information}\n"
+                f"Feedback: {feedback}\n"
                 f"Past Actions: {json.dumps([a['action'] for a in state.actions_taken])}\n\n"
                 "Next Action JSON:"
             )
@@ -95,6 +97,17 @@ class AgentOrchestrator:
             tool_result = {}
 
             if action == "stop":
+                # Deterministic guard against premature stopping
+                is_insufficient = False
+                if state.evidence_evaluations and state.evidence_evaluations[-1].get("status") != "sufficient":
+                    is_insufficient = True
+                elif state.missing_information and state.missing_information not in ["No issues identified.", ""]:
+                    is_insufficient = True
+
+                if is_insufficient and state.current_step < state.maximum_steps:
+                    state.strategy_changes.append("Stop was blocked because evidence is insufficient. Investigate further before stopping.")
+                    continue
+
                 state.stopping_reason = reason or params.get("reason", "controller_stopped")
                 state.add_action(action, reason, params, tool_result, tool_status)
                 break
