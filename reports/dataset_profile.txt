@@ -1,0 +1,34 @@
+DATASET PROFILE REPORT
+======================
+
+CORPUS STATS
+total_records: 2951
+valid_records: 2951
+malformed_records: 0
+empty_records: 0
+fields_presence: {'doc_id': 2951, 'title': 2951, 'url': 2951, 'wikidata_qid': 2951, 'wikipedia_pageid': 2951, 'approx_tokens': 2951, 'text': 2951}
+fields_types: {'doc_id': ['str'], 'title': ['str'], 'url': ['str'], 'wikidata_qid': ['str'], 'wikipedia_pageid': ['int'], 'approx_tokens': ['int'], 'text': ['str']}
+null_counts: {}
+duplicate_ids_count: 0
+text_length_statistics: {'count': 2951, 'chars': {'min': 444, 'max': 107498, 'mean': 7411.08, 'median': 4131}, 'words': {'min': 62, 'max': 17577, 'mean': 1339.36, 'median': 836}}
+
+PUBLIC QUESTIONS STATS
+total_records: 100
+valid_records: 100
+malformed_records: 0
+empty_records: 0
+fields_presence: {'qid': 100, 'question': 100, 'qtype': 100, 'answer_named_in_question': 100, 'guess_baseline': 100, 'gold_doc_ids': 100, 'answer_verified': 100, 'answer': 100}
+fields_types: {'qid': ['str'], 'question': ['str'], 'qtype': ['str'], 'answer_named_in_question': ['bool'], 'guess_baseline': ['float'], 'gold_doc_ids': ['list'], 'answer_verified': ['bool'], 'answer': ['list']}
+null_counts: {}
+question_types: {'aggregation': 21, 'temporal': 22, 'superlative': 10, 'multi_hop': 28, 'lookup': 19}
+answer_formats: {'list': 100}
+unique_source_docs_referenced: 518
+question_length_statistics: {'count': 100, 'chars': {'min': 75, 'max': 136, 'mean': 108.17, 'median': 113.0}, 'words': {'min': 14, 'max': 23, 'mean': 18.7, 'median': 19.0}}
+answer_length_statistics: {'count': 100, 'chars': {'min': 1, 'max': 65, 'mean': 13.89, 'median': 12.0}, 'words': {'min': 1, 'max': 12, 'mean': 2.47, 'median': 2.0}}
+
+ARCHITECTURE OBSERVATIONS
+- Found 518 unique source documents referenced across all public questions.
+- Gold document IDs are provided as a list of strings, which is useful for RAG retrieval evaluation.
+- Dataset explicitely provides qtype (aggregation, temporal, etc.), which could dictate the agent tool/routing strategy.
+- Answer formats primarily observed as: {'list': 100}
+- The corpus contains Wikipedia-like structure with titles, text, tokens, and URLs, which is rich for Graph properties.

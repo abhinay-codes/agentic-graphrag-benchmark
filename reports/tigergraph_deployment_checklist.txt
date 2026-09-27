@@ -1,0 +1,65 @@
+TIGERGRAPH CLOUD DEPLOYMENT CHECKLIST
+=====================================
+
+1. REQUIRED ENVIRONMENT VARIABLES
+---------------------------------
+Ensure the following variables are available in the environment (or .env file):
+- TIGERGRAPH_HOST: The Cloud instance URL (e.g. "https://xxxx.i.tgcloud.io")
+- TIGERGRAPH_GRAPH: The target graph name (e.g. "AgenticGraphRAG")
+- TIGERGRAPH_SECRET: The GSQL Secret used to automatically obtain an auth token.
+
+WARNING: The TIGERGRAPH_SECRET must NEVER be committed to version control, logged, or printed to the console.
+
+2. GRAPH CREATION & SCHEMA DEPLOYMENT
+-------------------------------------
+Deployment Order:
+1. Provision the TigerGraph Cloud instance.
+2. Create the Graph in GSQL (if not already existing):
+   CREATE GRAPH AgenticGraphRAG ()
+
+3. Deploy Schema via GSQL terminal or GraphStudio using `src/ingestion/tigergraph_schema.gsql`.
+   Required Commands:
+   USE GRAPH AgenticGraphRAG
+   CREATE GLOBAL SCHEMA_CHANGE JOB create_graph_schema {
+       ADD VERTEX Document (PRIMARY_ID doc_id STRING, title STRING, url STRING, wikipedia_pageid INT) WITH PRIMARY_ID_AS_ATTRIBUTE="true";
+       ADD VERTEX Chunk (PRIMARY_ID chunk_id STRING, text STRING, chunk_index INT) WITH PRIMARY_ID_AS_ATTRIBUTE="true";
+       ADD VERTEX Entity (PRIMARY_ID wikidata_qid STRING) WITH PRIMARY_ID_AS_ATTRIBUTE="true";
+       ADD DIRECTED EDGE HAS_CHUNK (FROM Document, TO Chunk);
+       ADD DIRECTED EDGE ABOUT_ENTITY (FROM Document, TO Entity);
+   }
+   RUN GLOBAL SCHEMA_CHANGE JOB create_graph_schema
+
+3. CORPUS LOADING (LIVE MODE)
+-----------------------------
+To execute the live batch upsert:
+1. Ensure the environment variables are exported.
+2. Run the loader module directly:
+   `python -m src.ingestion.tigergraph_loader`
+
+4. EXPECTED COUNTS
+------------------
+Upon successful loading of the benchmark corpus, you must see exactly:
+- Documents: 2,951
+- Chunks: 13,130
+- Entity references: 2,951
+- ABOUT_ENTITY edges: 2,951
+- HAS_CHUNK edges: 13,130
+- Total Vertices: 19,032
+- Total Edges: 16,081
+
+5. VERIFICATION COMMANDS
+------------------------
+Within Python, you can utilize the GraphRetriever API to safely query the Graph:
+```python
+from src.retrieval.graph_retriever import GraphRetriever
+gr = GraphRetriever()
+gr.connect()
+print(gr.get_graph_counts())
+print(gr.get_document("Q303623"))
+print(gr.get_document_entity("Q303623"))
+print(len(gr.get_document_chunks("Q303623")))
+```
+
+6. MOCK MODE
+------------
+If the environment variables are missing, or `pyTigerGraph` is uninstalled, the loader and retriever automatically fall back to "mock mode". They will log a warning, bypass network operations, return deterministic mock data structures for queries, and locally simulate UPSERT counts for validation testing.

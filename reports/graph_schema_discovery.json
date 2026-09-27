@@ -1,0 +1,60 @@
+{
+  "candidate_vertex_types": [
+    {
+      "name": "Document",
+      "id_field": "doc_id",
+      "attributes": ["title", "url", "wikipedia_pageid", "approx_tokens"],
+      "source_evidence": "Explicitly present in corpus.jsonl"
+    },
+    {
+      "name": "Chunk",
+      "id_field": "chunk_id",
+      "attributes": ["text", "chunk_index", "start_word", "end_word"],
+      "source_evidence": "Generated deterministically in Phase 2 from corpus.jsonl"
+    },
+    {
+      "name": "Entity",
+      "id_field": "wikidata_qid",
+      "attributes": [],
+      "source_evidence": "Each document has a wikidata_qid representing the primary entity of the document."
+    }
+  ],
+  "candidate_edge_types": [
+    {
+      "name": "HAS_CHUNK",
+      "from": "Document",
+      "to": "Chunk",
+      "type": "deterministic",
+      "source_evidence": "Chunks are derived directly from the document text."
+    },
+    {
+      "name": "ABOUT_ENTITY",
+      "from": "Document",
+      "to": "Entity",
+      "type": "explicit",
+      "source_evidence": "The wikidata_qid field is explicitly provided for each document."
+    }
+  ],
+  "future_llm_extraction_candidates": [
+    {
+      "description": "Extracting athletes, venues, dates, and medals from the [Infobox Olympic event] block at the start of the text.",
+      "reasoning": "While semi-structured, extracting fields from the raw text block requires either complex/brittle regex heuristics or LLM extraction to reliably normalize entity names (e.g. 'Rudolf DombiRoland Kökény').",
+      "type": "LLM-extracted / heuristic"
+    },
+    {
+      "description": "Extracting hyperlinks or cross-references to other documents.",
+      "reasoning": "Wikipedia text usually contains links, but they are not preserved in the raw text provided. LLM extraction would be needed to find mentions of other entities.",
+      "type": "LLM-extracted"
+    }
+  ],
+  "rejected_relationships": [
+    {
+      "name": "Document_to_Athlete",
+      "reason": "Athletes are only mentioned in the raw text (e.g. inside the infobox or body). Cannot be reliably derived without NLP."
+    },
+    {
+      "name": "Document_to_Venue",
+      "reason": "Venues are embedded in the text block. Needs NLP to extract reliably."
+    }
+  ]
+}

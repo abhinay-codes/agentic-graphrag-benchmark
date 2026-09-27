@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+.env.*
+!.env.example
+.vscode/
+scratch/
+*.log
+reports_out.txt
+data/hidden/
+
+data/processed/
+reports/phase10_public_benchmark/

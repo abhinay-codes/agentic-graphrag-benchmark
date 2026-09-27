@@ -1,0 +1,34 @@
+GRAPH SCHEMA DISCOVERY REPORT
+=============================
+
+1. Identifiable Entities & Identifiers
+--------------------------------------
+The corpus explicitly provides the following identifiers per record:
+- doc_id (Unique document identifier)
+- wikidata_qid (Unique identifier for the Wikidata entity the document describes)
+- chunk_id (Deterministically generated in Phase 2)
+
+2. Explicit & Deterministic Relationships
+-----------------------------------------
+- Document -> Entity (ABOUT_ENTITY): Explicitly provided via the `wikidata_qid` field on each document.
+- Document -> Chunk (HAS_CHUNK): Deterministically derived from the chunking process (doc_id is preserved in chunks).
+
+3. Relationships Requiring NLP/LLM Extraction
+---------------------------------------------
+The `text` field begins with a semi-structured `[Infobox Olympic event]` block containing fields like `venue`, `date`, `competitors`, `gold`, `silver`, `bronze`.
+- While a regex could theoretically parse these, the formatting contains anomalies (e.g., "Rudolf DombiRoland Kökény" merged together, "6:14.60 speed skating").
+- Extracting these reliably into graph nodes (e.g., Athlete, Venue, Country) requires NLP or an LLM to normalize the entities.
+- Therefore, they are categorized under "future_llm_extraction_candidates".
+
+4. Initial Reliable Graph Schema
+--------------------------------
+Vertex Types:
+- Document (doc_id, title, url, wikipedia_pageid)
+- Chunk (chunk_id, text, chunk_index)
+- Entity (wikidata_qid)
+
+Edge Types:
+- (Document)-[ABOUT_ENTITY]->(Entity)
+- (Document)-[HAS_CHUNK]->(Chunk)
+
+This minimal schema provides strong evidence-based linkage without relying on speculative extraction, supporting document lookup, chunk retrieval, and entity-to-document traversal.
