@@ -1,7 +1,6 @@
 # RAG vs GraphRAG vs Agentic GraphRAG
 
-Welcome to the **RAG vs GraphRAG vs Agentic GraphRAG** project — a final submission for the TigerGraph Hackathon.
-
+Welcome to the **RAG vs GraphRAG vs Agentic GraphRAG** project.
 ## What is this project?
 This project is an end-to-end framework designed to strictly evaluate and compare three distinct retrieval architectures:
 1. **Standard RAG (Vector Search):** Semantic search using FAISS embeddings.
