@@ -8,6 +8,30 @@ from src.ingestion.corpus_loader import load_documents, _check_path_safety
 from src.ingestion.chunker import Chunker
 
 class TestCorpusLoader(unittest.TestCase):
+    def test_extract_infobox_fields(self):
+        from src.ingestion.tigergraph_loader import TigerGraphLoader
+        loader = TigerGraphLoader()
+
+        # Valid infobox
+        text1 = "[Infobox Olympic event]\ngames: 2016 Summer\nvenue: Olympic Stadium\nevent: 100m\ngoldNOC: USA\nsilverNOC: JAM\nbronzeNOC: GBR\n\nLater text games: 2020 Summer"
+        res1 = loader.extract_infobox_fields(text1)
+        self.assertEqual(res1.get("games"), "2016 Summer")
+        self.assertEqual(res1.get("venue"), "Olympic Stadium")
+        self.assertEqual(res1.get("event"), "100m")
+        self.assertEqual(res1.get("goldNOC"), "USA")
+        self.assertEqual(res1.get("silverNOC"), "JAM")
+        self.assertEqual(res1.get("bronzeNOC"), "GBR")
+
+        # Fake fields later
+        text2 = "Some prose games: 2020 Summer venue: Fake"
+        res2 = loader.extract_infobox_fields(text2)
+        self.assertEqual(res2, {})
+
+        # Whitespace
+        text3 = "[Infobox Olympic event]\ngames:   2008 Beijing   \n\n"
+        res3 = loader.extract_infobox_fields(text3)
+        self.assertEqual(res3.get("games"), "2008 Beijing")
+
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.temp_path = Path(self.temp_dir.name)

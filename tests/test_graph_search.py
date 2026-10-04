@@ -5,6 +5,7 @@ from src.retrieval.graph_search import GraphRetriever
 @pytest.fixture
 def mock_conn():
     conn = MagicMock()
+    conn.graphname = 'TEST'
     return conn
 
 @pytest.fixture
@@ -47,9 +48,9 @@ def test_tigergraph_traversal(retriever, mock_conn):
     # Verify provenance path
     for p in prov:
         if p["doc_id"] == "doc1":
-            assert p["graph_path"] == "doc1 -> doc1 -> c1"
+            assert p["graph_path"] == "doc1 -> HAS_CHUNK -> c1"
         else:
-            assert p["graph_path"] == "doc1 -> Q123 -> doc2 -> c2"
+            assert p["graph_path"] == "doc1 -> ABOUT_ENTITY -> Q123 -> ABOUT_ENTITY -> doc2 -> HAS_CHUNK -> c2"
 
 def test_deduplication_and_limits(retriever, mock_conn):
     # 4. entity deduplication, 5. document deduplication, 6. chunk deduplication, 7. evidence limits

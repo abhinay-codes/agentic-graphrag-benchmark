@@ -8,6 +8,16 @@ from src.agent.state import AgentState
 from src.pipelines.agentic_graphrag import AgenticGraphRAGPipeline
 
 
+
+
+@pytest.fixture(autouse=True)
+def mock_dependencies():
+    with unittest.mock.patch('src.agent.tools.GraphRetriever') as mock_gr, \
+         unittest.mock.patch('src.agent.tools.VectorSearch') as mock_vs, \
+         unittest.mock.patch('src.agent.tools.OllamaClient') as mock_oc:
+        yield mock_gr, mock_vs, mock_oc
+
+
 def test_normalize_top_k_valid():
     assert normalize_top_k(5) == 5
     assert normalize_top_k("5") == 5
@@ -180,7 +190,10 @@ def test_insufficient_evidence_blocks_stop():
     assert state.current_step == 3
     # At max steps, it allows the stop action to proceed, so reason is "done" from the LLM
     assert state.stopping_reason == "done"
-    assert any("Blocked premature stop" in sc for sc in state.strategy_changes)
+    assert any(
+    "Stop was blocked because evidence is insufficient" in sc
+    for sc in state.strategy_changes
+)
 
 
 def test_sufficient_evidence_allows_stop():

@@ -1,4 +1,5 @@
 import json
+import re
 import logging
 import os
 import sys
@@ -24,6 +25,37 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
 class TigerGraphLoader:
+    def extract_infobox_fields(self, text: str) -> dict:
+        result = {}
+        match = re.search(r"\[Infobox Olympic event\](.*?)(?:\n\n|\Z)", text, re.DOTALL)
+        if not match:
+            return result
+
+        block = match.group(1)
+
+        keywords = [
+            "event:", "games:", "venue:", "dates:", "competitors:", "nations:",
+            "longnames:", "gold:", "goldNOC:", "silver:", "silverNOC:",
+            "bronze:", "bronzeNOC:", "win_label:", "win_value:", "prev:", "next:"
+        ]
+        keywords_pattern = "|".join(re.escape(kw) for kw in keywords)
+
+        fields_to_extract = ["games", "venue", "event", "goldNOC", "silverNOC", "bronzeNOC"]
+
+        for field in fields_to_extract:
+            if field.endswith("NOC"):
+                noc_match = re.search(rf"\b{field}:\s*([A-Z]{{3}})\b", block)
+                if noc_match:
+                    result[field] = noc_match.group(1).strip()
+            else:
+                pattern = rf"\b{field}:\s*(.*?)(?=\s+(?:{keywords_pattern})|$)"
+                field_match = re.search(pattern, block)
+                if field_match:
+                    val = field_match.group(1).strip()
+                    if val:
+                        result[field] = val
+        return result
+
     def __init__(self, host: str = None, graphname: str = None, secret: str = None):
         self.host = host or os.environ.get("TIGERGRAPH_HOST")
         self.graphname = graphname or os.environ.get("TIGERGRAPH_GRAPH")
@@ -85,8 +117,8 @@ class TigerGraphLoader:
 
         logger.info(f"Loading corpus from {corpus_path} into TigerGraph...")
 
-        vertices = {"Document": {}, "Chunk": {}, "Entity": {}}
-        edges = {"HAS_CHUNK": [], "ABOUT_ENTITY": []}
+        vertices = {"Document": {}, "Chunk": {}, "Entity": {}, "Games": {}, "Venue": {}, "Event": {}, "NOC": {}}
+        edges = {"HAS_CHUNK": [], "ABOUT_ENTITY": [], "IN_GAMES": [], "AT_VENUE": [], "HAS_EVENT": [], "GOLD_NOC": [], "SILVER_NOC": [], "BRONZE_NOC": []}
 
         chunker = Chunker()
 
@@ -122,6 +154,26 @@ class TigerGraphLoader:
                         if qid:
                             edges["ABOUT_ENTITY"].append((doc_id, qid, {}))
 
+                        extracted = self.extract_infobox_fields(chunk["text"])
+                        if "games" in extracted:
+                            vertices["Games"][extracted["games"]] = {}
+                            edges["IN_GAMES"].append((doc_id, extracted["games"], {}))
+                        if "venue" in extracted:
+                            vertices["Venue"][extracted["venue"]] = {}
+                            edges["AT_VENUE"].append((doc_id, extracted["venue"], {}))
+                        if "event" in extracted:
+                            vertices["Event"][extracted["event"]] = {}
+                            edges["HAS_EVENT"].append((doc_id, extracted["event"], {}))
+                        if "goldNOC" in extracted:
+                            vertices["NOC"][extracted["goldNOC"]] = {}
+                            edges["GOLD_NOC"].append((doc_id, extracted["goldNOC"], {}))
+                        if "silverNOC" in extracted:
+                            vertices["NOC"][extracted["silverNOC"]] = {}
+                            edges["SILVER_NOC"].append((doc_id, extracted["silverNOC"], {}))
+                        if "bronzeNOC" in extracted:
+                            vertices["NOC"][extracted["bronzeNOC"]] = {}
+                            edges["BRONZE_NOC"].append((doc_id, extracted["bronzeNOC"], {}))
+
                     except json.JSONDecodeError:
                         self.stats["failures_errors"] += 1
         else:
@@ -150,6 +202,25 @@ class TigerGraphLoader:
                             }
                             self.stats["chunks_attempted"] += 1
                         edges["HAS_CHUNK"].append((doc.doc_id, chunk["chunk_id"], {}))
+                        extracted = self.extract_infobox_fields(chunk["text"])
+                        if "games" in extracted:
+                            vertices["Games"][extracted["games"]] = {}
+                            edges["IN_GAMES"].append((doc.doc_id, extracted["games"], {}))
+                        if "venue" in extracted:
+                            vertices["Venue"][extracted["venue"]] = {}
+                            edges["AT_VENUE"].append((doc.doc_id, extracted["venue"], {}))
+                        if "event" in extracted:
+                            vertices["Event"][extracted["event"]] = {}
+                            edges["HAS_EVENT"].append((doc.doc_id, extracted["event"], {}))
+                        if "goldNOC" in extracted:
+                            vertices["NOC"][extracted["goldNOC"]] = {}
+                            edges["GOLD_NOC"].append((doc.doc_id, extracted["goldNOC"], {}))
+                        if "silverNOC" in extracted:
+                            vertices["NOC"][extracted["silverNOC"]] = {}
+                            edges["SILVER_NOC"].append((doc.doc_id, extracted["silverNOC"], {}))
+                        if "bronzeNOC" in extracted:
+                            vertices["NOC"][extracted["bronzeNOC"]] = {}
+                            edges["BRONZE_NOC"].append((doc.doc_id, extracted["bronzeNOC"], {}))
                 except Exception as e:
                     logger.error(f"Error processing doc {doc.doc_id}: {e}")
                     self.stats["failures_errors"] += 1
@@ -189,18 +260,23 @@ class TigerGraphLoader:
                     result.append((src, tgt, attr))
             return result
 
-        edges["HAS_CHUNK"] = dedup_edges(edges["HAS_CHUNK"])
-        edges["ABOUT_ENTITY"] = dedup_edges(edges["ABOUT_ENTITY"])
+        for et in ["HAS_CHUNK", "ABOUT_ENTITY", "IN_GAMES", "AT_VENUE", "HAS_EVENT", "GOLD_NOC", "SILVER_NOC", "BRONZE_NOC"]:
+            edges[et] = dedup_edges(edges[et])
 
         if self.conn:
             logger.info("Batch upserting vertices...")
-            self._batch_upsert_vertices("Document", vertices["Document"])
-            self._batch_upsert_vertices("Chunk", vertices["Chunk"])
-            self._batch_upsert_vertices("Entity", vertices["Entity"])
+            for vt in ["Document", "Chunk", "Entity", "Games", "Venue", "Event", "NOC"]:
+                self._batch_upsert_vertices(vt, vertices[vt])
 
             logger.info("Batch upserting edges...")
             self._batch_upsert_edges("Document", "HAS_CHUNK", "Chunk", edges["HAS_CHUNK"])
             self._batch_upsert_edges("Document", "ABOUT_ENTITY", "Entity", edges["ABOUT_ENTITY"])
+            self._batch_upsert_edges("Document", "IN_GAMES", "Games", edges["IN_GAMES"])
+            self._batch_upsert_edges("Document", "AT_VENUE", "Venue", edges["AT_VENUE"])
+            self._batch_upsert_edges("Document", "HAS_EVENT", "Event", edges["HAS_EVENT"])
+            self._batch_upsert_edges("Document", "GOLD_NOC", "NOC", edges["GOLD_NOC"])
+            self._batch_upsert_edges("Document", "SILVER_NOC", "NOC", edges["SILVER_NOC"])
+            self._batch_upsert_edges("Document", "BRONZE_NOC", "NOC", edges["BRONZE_NOC"])
 
         # Update exact stats
         doc_count = len(vertices["Document"])

@@ -105,3 +105,10 @@ class VectorSearch:
 
             if self.index.ntotal != len(self.metadata):
                 raise RuntimeError(f"Corrupt Index: FAISS count ({self.index.ntotal}) != metadata count ({len(self.metadata)})")
+
+    def __del__(self):
+        self.close()
+
+    def close(self):
+        if hasattr(self, 'index'):
+            del self.index

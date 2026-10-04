@@ -98,7 +98,7 @@ class GraphRetriever:
         start_time = time.time()
 
         query = """
-        INTERPRET QUERY (SET<STRING> seed_doc_ids) FOR GRAPH GRAPHRAG {
+        INTERPRET QUERY (SET<STRING> seed_doc_ids) FOR GRAPH __GRAPH_NAME__ {
             SetAccum<STRING> @seed_docs;
             SetAccum<STRING> @connected_entities;
             MaxAccum<STRING> @parent_doc;
@@ -110,16 +110,23 @@ class GraphRetriever:
                 FROM AllDocs:s
                 WHERE s.doc_id IN seed_doc_ids;
 
-            Entities =
-                SELECT t
-                FROM SeedDocs:s -(ABOUT_ENTITY:e)-> Entity:t
-                ACCUM t.@seed_docs += s.doc_id;
+            E1 = SELECT t FROM SeedDocs:s -(ABOUT_ENTITY:e)-> Entity:t ACCUM t.@seed_docs += s.doc_id;
+            E2 = SELECT t FROM SeedDocs:s -(IN_GAMES:e)-> Games:t ACCUM t.@seed_docs += s.doc_id;
+            E3 = SELECT t FROM SeedDocs:s -(AT_VENUE:e)-> Venue:t ACCUM t.@seed_docs += s.doc_id;
+            E4 = SELECT t FROM SeedDocs:s -(HAS_EVENT:e)-> Event:t ACCUM t.@seed_docs += s.doc_id;
+            E5 = SELECT t FROM SeedDocs:s -(GOLD_NOC:e)-> NOC:t ACCUM t.@seed_docs += s.doc_id;
+            E6 = SELECT t FROM SeedDocs:s -(SILVER_NOC:e)-> NOC:t ACCUM t.@seed_docs += s.doc_id;
+            E7 = SELECT t FROM SeedDocs:s -(BRONZE_NOC:e)-> NOC:t ACCUM t.@seed_docs += s.doc_id;
+            Entities = E1 UNION E2 UNION E3 UNION E4 UNION E5 UNION E6 UNION E7;
 
-            ExpandedDocs =
-                SELECT s
-                FROM AllDocs:s -(ABOUT_ENTITY:e)-> Entity:t
-                WHERE t.@seed_docs.size() > 0
-                ACCUM s.@connected_entities += t.wikidata_qid;
+            D1 = SELECT s FROM AllDocs:s -(ABOUT_ENTITY:e)-> Entity:t WHERE t.@seed_docs.size() > 0 ACCUM s.@connected_entities += ("ABOUT_ENTITY:" + t.wikidata_qid);
+            D2 = SELECT s FROM AllDocs:s -(IN_GAMES:e)-> Games:t WHERE t.@seed_docs.size() > 0 ACCUM s.@connected_entities += ("IN_GAMES:" + t.id);
+            D3 = SELECT s FROM AllDocs:s -(AT_VENUE:e)-> Venue:t WHERE t.@seed_docs.size() > 0 ACCUM s.@connected_entities += ("AT_VENUE:" + t.id);
+            D4 = SELECT s FROM AllDocs:s -(HAS_EVENT:e)-> Event:t WHERE t.@seed_docs.size() > 0 ACCUM s.@connected_entities += ("HAS_EVENT:" + t.id);
+            D5 = SELECT s FROM AllDocs:s -(GOLD_NOC:e)-> NOC:t WHERE t.@seed_docs.size() > 0 ACCUM s.@connected_entities += ("GOLD_NOC:" + t.id);
+            D6 = SELECT s FROM AllDocs:s -(SILVER_NOC:e)-> NOC:t WHERE t.@seed_docs.size() > 0 ACCUM s.@connected_entities += ("SILVER_NOC:" + t.id);
+            D7 = SELECT s FROM AllDocs:s -(BRONZE_NOC:e)-> NOC:t WHERE t.@seed_docs.size() > 0 ACCUM s.@connected_entities += ("BRONZE_NOC:" + t.id);
+            ExpandedDocs = D1 UNION D2 UNION D3 UNION D4 UNION D5 UNION D6 UNION D7;
 
             Chunks =
                 SELECT t
@@ -127,25 +134,26 @@ class GraphRetriever:
                 ACCUM t.@parent_doc = s.doc_id;
 
             PRINT Entities[
-                Entities.wikidata_qid,
                 Entities.@seed_docs
             ];
 
             PRINT ExpandedDocs[
-                ExpandedDocs.doc_id,
                 ExpandedDocs.title,
                 ExpandedDocs.url,
+                ExpandedDocs.doc_id,
                 ExpandedDocs.@connected_entities
             ];
 
             PRINT Chunks[
-                Chunks.chunk_id,
                 Chunks.text,
                 Chunks.chunk_index,
+                Chunks.chunk_id,
                 Chunks.@parent_doc
             ];
         }
         """
+
+        query = query.replace("__GRAPH_NAME__", self.conn.graphname)
 
         try:
             res = self.conn.runInterpretedQuery(
@@ -190,9 +198,12 @@ class GraphRetriever:
         for ent in entities_data:
             attr = ent.get("attributes", {})
 
+            # For ANY type, the ID might be in v_id, or wikidata_qid
             qid = (
                 attr.get("Entities.wikidata_qid")
+                or attr.get("Entities.id")
                 or attr.get("wikidata_qid")
+                or attr.get("id")
                 or ent.get("v_id")
             )
 
@@ -328,49 +339,40 @@ class GraphRetriever:
                 # Construct graph provenance path
                 # ----------------------------------------------------
 
+                path = None
+                seed_docs_used = []
+
                 if doc_id in seed_doc_ids:
-
                     path = (
                         f"{doc_id} -> "
-                        f"{doc_id} -> "
+                        f"HAS_CHUNK -> "
                         f"{chunk_id}"
                     )
-
                     seed_docs_used = [doc_id]
-
                 else:
+                    connected_entities = doc_info.get("entities", [])
+                    conn_ent = connected_entities[0] if connected_entities else None
 
-                    # Pick the first connecting entity for the
-                    # provenance representation.
-                    connected_entities = doc_info.get(
-                        "entities",
-                        [],
-                    )
+                    if conn_ent:
+                        # conn_ent is like "IN_GAMES:2016 Summer"
+                        parts = conn_ent.split(":", 1)
+                        if len(parts) == 2:
+                            rel_type = parts[0]
+                            ent_id = parts[1]
+                        else:
+                            rel_type = "ABOUT_ENTITY"
+                            ent_id = conn_ent
 
-                    conn_ent = (
-                        connected_entities[0]
-                        if connected_entities
-                        else "unknown"
-                    )
-
-                    conn_seeds = entities.get(
-                        conn_ent,
-                        ["unknown"],
-                    )
-
-                    if conn_seeds:
-                        seed_docs_used = conn_seeds
-                        first_seed = conn_seeds[0]
-                    else:
-                        seed_docs_used = ["unknown"]
-                        first_seed = "unknown"
-
-                    path = (
-                        f"{first_seed} -> "
-                        f"{conn_ent} -> "
-                        f"{doc_id} -> "
-                        f"{chunk_id}"
-                    )
+                        conn_seeds = entities.get(ent_id, [])
+                        if conn_seeds:
+                            seed_docs_used = conn_seeds
+                            first_seed = conn_seeds[0]
+                            path = (
+                                f"{first_seed} -> {rel_type} -> "
+                                f"{ent_id} -> {rel_type} -> "
+                                f"{doc_id} -> HAS_CHUNK -> "
+                                f"{chunk_id}"
+                            )
 
                 # ----------------------------------------------------
                 # Store retrieved chunk
@@ -391,19 +393,20 @@ class GraphRetriever:
                 # Store provenance
                 # ----------------------------------------------------
 
-                provenance.append(
-                    {
-                        "chunk_id": chunk_id,
-                        "doc_id": doc_id,
-                        "title": doc_info["title"],
-                        "url": doc_info["url"],
-                        "chunk_index": chunk["chunk_index"],
-                        "text": chunk["text"],
-                        "seed_documents": seed_docs_used,
-                        "entities_used": doc_info["entities"],
-                        "graph_path": path,
-                    }
-                )
+                if path is not None:
+                    provenance.append(
+                        {
+                            "chunk_id": chunk_id,
+                            "doc_id": doc_id,
+                            "title": doc_info["title"],
+                            "url": doc_info["url"],
+                            "chunk_index": chunk["chunk_index"],
+                            "text": chunk["text"],
+                            "seed_documents": seed_docs_used,
+                            "entities_used": doc_info["entities"],
+                            "graph_path": path,
+                        }
+                    )
 
             if len(final_chunks) >= max_total_chunks:
                 break
