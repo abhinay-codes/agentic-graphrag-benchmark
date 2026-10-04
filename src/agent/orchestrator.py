@@ -123,16 +123,17 @@ class AgentOrchestrator:
                     tool_status = "error"
                     state.missing_information = f"vector_search failed: {out['error']}"
                 else:
+                    chunks_to_add = []
+                    provs_to_add = []
                     for c in out.get("chunks", []):
-
-                        state.candidate_evidence.append({
+                        chunks_to_add.append({
                             "chunk_id": c.get("chunk_id"),
                             "doc_id": c.get("doc_id"),
                             "title": c.get("title"),
                             "url": c.get("url"),
                             "text": c.get("text") or ""
                         })
-                        state.retrieval_history.append({
+                        provs_to_add.append({
                             "chunk_id": c.get("chunk_id"),
                             "doc_id": c.get("doc_id"),
                             "graph_path": "vector_search",
@@ -141,6 +142,7 @@ class AgentOrchestrator:
                         })
                         if c.get("doc_id") not in state.documents_discovered:
                             state.documents_discovered.append(c.get("doc_id"))
+                    state.add_candidate_evidence(chunks_to_add, provs_to_add)
                 state.total_retrieval_duration_s += out.get("duration_s", 0)
 
             elif action == "graph_expansion":
@@ -154,8 +156,7 @@ class AgentOrchestrator:
                     tool_status = "error"
                     state.missing_information = f"graph_expansion failed: {out['error']}"
                 else:
-                    state.candidate_evidence.extend(out.get("chunks", []))
-                    state.retrieval_history.extend(out.get("provenance", []))
+                    state.add_candidate_evidence(out.get("chunks", []), out.get("provenance", []))
                     for d in out.get("documents", []):
                         if d not in state.documents_discovered:
                             state.documents_discovered.append(d)
