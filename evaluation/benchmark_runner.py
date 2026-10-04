@@ -121,16 +121,24 @@ class BenchmarkRunner:
             if pipeline_name in ["RAG", "GraphRAG"]:
                 prompt_tokens = trace.get("prompt_eval_count")
                 output_tokens = trace.get("eval_count")
-                if prompt_tokens is None or output_tokens is None:
+                if not isinstance(prompt_tokens, (int, float)) or not isinstance(output_tokens, (int, float)):
                     raise ValueError("telemetry_unavailable")
                 total_tokens = prompt_tokens + output_tokens
             else:
                 tok_usage = trace.get("token_usage", {})
+                prompt_tokens = (
+                    tok_usage.get("controller_input_tokens", 0) +
+                    tok_usage.get("evaluator_input_tokens", 0) +
+                    tok_usage.get("final_answer_input_tokens", 0)
+                )
+                output_tokens = (
+                    tok_usage.get("controller_output_tokens", 0) +
+                    tok_usage.get("evaluator_output_tokens", 0) +
+                    tok_usage.get("final_answer_output_tokens", 0)
+                )
                 total_tokens = tok_usage.get("total_tokens")
-                prompt_tokens = total_tokens - tok_usage.get("final_answer_eval_tokens", 0) if total_tokens is not None else None
-                output_tokens = tok_usage.get("final_answer_eval_tokens")
 
-                if prompt_tokens is None or output_tokens is None or total_tokens is None:
+                if not isinstance(prompt_tokens, (int, float)) or not isinstance(output_tokens, (int, float)) or not isinstance(total_tokens, (int, float)):
                     raise ValueError("telemetry_unavailable")
 
                 if total_tokens != (prompt_tokens + output_tokens):
@@ -148,6 +156,25 @@ class BenchmarkRunner:
                     total_tokens=total_tokens,
                     retrieved_chunks=len(trace.get("retrieved_chunks", [])),
                     citations=res.get("citations", []),
+                    status="success"
+                )
+            elif pipeline_name == "GraphRAG":
+                return BenchmarkResult(
+                    question_id=q_id,
+                    pipeline=pipeline_name,
+                    question=question,
+                    answer=res.get("answer", ""),
+                    latency_s=duration,
+                    prompt_tokens=prompt_tokens,
+                    output_tokens=output_tokens,
+                    total_tokens=total_tokens,
+                    retrieved_chunks=trace.get("retrieved_chunk_count"),
+                    citations=res.get("citations", []),
+                    graph_candidate_chunks=trace.get("graph_candidate_chunk_count"),
+                    selected_chunks=trace.get("selected_chunk_count"),
+                    graph_documents=trace.get("related_document_count"),
+                    graph_entities=trace.get("entity_count"),
+                    graph_provenance=trace.get("graph_provenance"),
                     status="success"
                 )
             elif pipeline_name == "GraphRAG":
@@ -219,8 +246,43 @@ class BenchmarkRunner:
         lock.acquire()
         try:
             self._run_benchmark_internal(overwrite, specific_ids)
+            if not specific_ids:
+                self.validate_benchmark()
         finally:
             lock.release()
+
+    def validate_benchmark(self):
+        import json
+        with open(self.results_file, 'r', encoding='utf-8') as f:
+            results = [json.loads(line) for line in f]
+
+        expected_questions = len(self.load_public_questions())
+        expected_pipelines = len(self._pipeline_classes)
+
+        q_ids = set()
+        pairs = set()
+
+        for r in results:
+            if r.get("status") == "success":
+                # ensure required telemetry is present
+                if r.get("total_tokens") is None or r.get("prompt_tokens") is None or r.get("output_tokens") is None:
+                    raise ValueError(f"Success record missing telemetry: {r}")
+                if r.get("total_tokens", 0) != r.get("prompt_tokens", 0) + r.get("output_tokens", 0):
+                    raise ValueError(f"Telemetry math mismatch: {r}")
+
+            q_ids.add(r["question_id"])
+            pair = (r["question_id"], r["pipeline"])
+            if pair in pairs:
+                raise ValueError(f"Duplicate pair found: {pair}")
+            pairs.add(pair)
+
+        if len(q_ids) != expected_questions:
+            raise ValueError(f"Expected {expected_questions} unique question IDs, found {len(q_ids)}")
+
+        if len(pairs) != expected_questions * expected_pipelines:
+            raise ValueError(f"Expected {expected_questions * expected_pipelines} unique pairs, found {len(pairs)}")
+
+        print("Benchmark completeness validation passed!")
 
     def _run_benchmark_internal(self, overwrite: bool = False, specific_ids: List[str] = None):
         questions = self.load_public_questions()

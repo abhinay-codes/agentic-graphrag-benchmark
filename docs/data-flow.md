@@ -62,6 +62,10 @@ stateDiagram-v2
     ActionSelection --> GraphExpansion
     ActionSelection --> SelectEvidence
     ActionSelection --> EvaluateEvidence
+    ActionSelection --> EntityLinking
+    ActionSelection --> DocumentRetrieval
+    ActionSelection --> MultiHopReasoning
+    ActionSelection --> AggregateEvidence
     
     VectorSearch --> StateUpdate
     GraphExpansion --> StateUpdate

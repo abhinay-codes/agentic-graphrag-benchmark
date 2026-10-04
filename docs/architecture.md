@@ -24,6 +24,7 @@ flowchart TD
         Controller <--> VectorSearch[Vector Search]
         Controller <--> GraphExp[Graph Expansion]
         Controller <--> EvidenceEval[Evidence Evaluation]
+        Controller <--> SpecialAgents[Specialized Agents]
         
         VectorSearch --> FAISS3[FAISS]
         GraphExp --> TigerGraph2[TigerGraph]

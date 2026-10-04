@@ -8,7 +8,7 @@ def test_resume_semantics(tmp_path):
     runner = BenchmarkRunner(output_dir=output_dir)
     os.makedirs(output_dir, exist_ok=True)
 
-    # Create fake results.jsonl with various statuses
+    # Create fake results_official_public.jsonl with various statuses
     records = [
         {"question_id": "q1", "pipeline": "RAG", "status": "success"},
         {"question_id": "q1", "pipeline": "GraphRAG", "status": "error"},
@@ -43,7 +43,7 @@ def test_resume_append_behavior(tmp_path):
     os.makedirs(output_dir, exist_ok=True)
 
     with open(runner.results_file, "w", encoding="utf-8") as f:
-        f.write(json.dumps({"question_id": "q1", "pipeline": "RAG", "status": "success"}) + "\n")
+        f.write(json.dumps({"question_id": "q1", "pipeline": "RAG", "status": "success", "prompt_tokens": 10, "output_tokens": 5, "total_tokens": 15}) + "\n")
         f.write(json.dumps({"question_id": "q1", "pipeline": "GraphRAG", "status": "error"}) + "\n")
 
     # Mock load_public_questions and _execute_pipeline
@@ -69,7 +69,8 @@ def test_resume_append_behavior(tmp_path):
             status="success"
         )
 
-    with mock.patch.object(runner, "_execute_pipeline", side_effect=mock_exec_side_effect) as mock_exec:
+    with mock.patch.object(runner, "_execute_pipeline", side_effect=mock_exec_side_effect) as mock_exec, \
+         mock.patch.object(runner, "validate_benchmark") as mock_validate:
         runner.run_benchmark(overwrite=False)
 
         assert mock_exec.call_count == 2

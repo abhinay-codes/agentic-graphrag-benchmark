@@ -98,7 +98,7 @@ def test_question_loading_evaluator_separation():
     from evaluation.benchmark_runner import BenchmarkRunner
     runner = BenchmarkRunner.__new__(BenchmarkRunner)  # skip __init__ to avoid pipeline construction
     runner.output_dir = "reports/phase10_public_benchmark"
-    runner.results_file = "reports/phase10_public_benchmark/results.jsonl"
+    runner.results_file = "reports/phase10_public_benchmark/results_official_public.jsonl"
     runner.manifest_file = "reports/phase10_public_benchmark/manifest.json"
     questions = runner.load_public_questions()
     assert len(questions) == 100
@@ -121,7 +121,7 @@ def test_hidden_data_path_rejection():
     from evaluation.benchmark_runner import BenchmarkRunner
     runner = BenchmarkRunner.__new__(BenchmarkRunner)
     runner.output_dir = "reports/phase10_public_benchmark"
-    runner.results_file = "reports/phase10_public_benchmark/results.jsonl"
+    runner.results_file = "reports/phase10_public_benchmark/results_official_public.jsonl"
     runner.manifest_file = "reports/phase10_public_benchmark/manifest.json"
     # The loader hardcodes data/public/eval_public.jsonl
     # Verify the path does not reference hidden
@@ -139,7 +139,7 @@ def test_resumability_skip_key(tmp_path):
     from evaluation.benchmark_runner import BenchmarkRunner
     runner = BenchmarkRunner.__new__(BenchmarkRunner)
     runner.output_dir = str(tmp_path)
-    runner.results_file = str(tmp_path / "results.jsonl")
+    runner.results_file = str(tmp_path / "results_official_public.jsonl")
     runner.manifest_file = str(tmp_path / "manifest.json")
 
     # Write two sample records

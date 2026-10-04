@@ -64,7 +64,7 @@ class AgentOrchestrator:
             )
             llm_duration = time.time() - t0
             state.total_llm_duration_s += llm_duration
-            state.update_tokens(res.get("prompt_eval_count", 0), res.get("eval_count", 0))
+            state.update_controller_tokens(res.get("prompt_eval_count", 0), res.get("eval_count", 0))
 
             text_resp = res.get("response", "").strip()
 
@@ -194,7 +194,7 @@ class AgentOrchestrator:
                     if eval_data.get("status") == "sufficient":
                         state.strategy_changes.append("Evidence is sufficient. Will stop next step.")
 
-                    state.update_tokens(out.get("prompt_eval_count", 0), out.get("eval_count", 0))
+                    state.update_evaluator_tokens(out.get("prompt_eval_count", 0), out.get("eval_count", 0))
                 state.total_llm_duration_s += out.get("duration_s", 0)
 
             else:

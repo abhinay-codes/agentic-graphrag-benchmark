@@ -48,6 +48,10 @@ Agentic GraphRAG shifts control from hardcoded Python scripts to an LLM-driven o
 - `graph_expansion`: TigerGraph traversal based on discovered seed documents.
 - `select_evidence`: Local semantic re-ranking of candidate chunks.
 - `evaluate_evidence`: Explicit LLM-based verification of whether the collected evidence satisfies the user's question.
+- `entity_linking`: Specialized graph entry via entities.
+- `document_retrieval`: Specialized wrapper for semantic retrieval.
+- `multi_hop_reasoning`: Depth-first graph traversals via entities.
+- `aggregate_evidence`: Specialized semantic synthesis over chunks.
 
 **Stop Guard:**
 The Agentic controller utilizes a programmatic stop guard. If the `evaluate_evidence` tool explicitly reports missing information, the orchestrator overrides any LLM attempts to prematurely stop, forcing further graph or vector investigation until the maximum step limit is reached or the evidence is verified as sufficient.

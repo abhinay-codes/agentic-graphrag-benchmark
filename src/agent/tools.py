@@ -27,6 +27,28 @@ class AgentTools:
         self.graph_search_client = GraphRetriever()
         self.llm_client = llm_client or OllamaClient()
 
+    # --- Specialized Agent Abstractions ---
+
+    def entity_linking(self, entities: List[str]) -> Dict[str, Any]:
+        """Explicit abstraction for Entity Linking."""
+        return self.graph_expansion(entities, top_k_chunks=5)
+
+    def document_retrieval(self, query: str, top_k: int = 5) -> Dict[str, Any]:
+        """Explicit abstraction for Document Retrieval."""
+        return self.vector_search(query, top_k=top_k)
+
+    def multi_hop_reasoning(self, entities: List[str], max_depth: int = 2) -> Dict[str, Any]:
+        """Explicit abstraction for Multi-hop Graph Reasoning."""
+        # Delegates to graph_expansion with potentially wider extraction
+        return self.graph_expansion(entities, top_k_chunks=10)
+
+    def aggregate_evidence(self, question: str, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Explicit abstraction for Evidence Aggregation."""
+        # The evaluator acts as the aggregator in the current system.
+        return self.evaluate_evidence(question, chunks)
+
+    # --------------------------------------
+
     def vector_search(self, query: str, top_k: int = 5) -> Dict[str, Any]:
         """Perform semantic retrieval using VectorSearch."""
         start_time = time.time()
@@ -105,6 +127,9 @@ class AgentTools:
             # 2. Embed candidates
             texts = [c.get("text") or "" for c in candidate_chunks]
             c_embs = self.llm_client.embed(texts)
+
+            if len(candidate_chunks) != len(candidate_provenance):
+                raise ValueError(f"Chunk/provenance alignment error: {len(candidate_chunks)} chunks vs {len(candidate_provenance)} provenance records")
 
             # 3. Score and sort
             scored_candidates = []

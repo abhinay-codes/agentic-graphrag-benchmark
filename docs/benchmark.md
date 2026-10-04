@@ -1,6 +1,6 @@
 # Public Benchmark Report
 
-This document details the exact audited metrics of the Phase 11 Public Benchmark.
+This document details the exact audited metrics of the Phase 10 Public Benchmark.
 
 ## Dataset Facts
 

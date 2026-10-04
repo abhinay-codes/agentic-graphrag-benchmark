@@ -25,6 +25,9 @@ class GraphRAGPipeline:
             logger.error(f"Failed to embed chunks for evidence selection: {e}")
             return graph_chunks[:final_top_k], graph_provenance[:final_top_k], [0.0] * min(len(graph_chunks), final_top_k)
 
+        if len(graph_chunks) != len(graph_provenance):
+            raise ValueError(f"Chunk/provenance alignment error: {len(graph_chunks)} chunks vs {len(graph_provenance)} provenance records")
+
         scored_candidates = []
         for i, (chunk, prov) in enumerate(zip(graph_chunks, graph_provenance)):
             c_emb = chunk_embeddings[i]

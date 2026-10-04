@@ -45,7 +45,7 @@ The project features a Live Interactive Dashboard for A/B/C testing the pipeline
 *(Note: This is a live smoke-test example rather than a universal benchmark performance claim).*
 
 ## Benchmark Summary
-The Phase 11 Public Benchmark contains 100 public questions spanning multi-hop, temporal, aggregation, lookup, and superlative queries.
+The Phase 10 Public Benchmark contains 100 public questions spanning multi-hop, temporal, aggregation, lookup, and superlative queries.
 After audit and deduplication, the public benchmark contains **300 unique successful pipeline/question pairs** (100 for each pipeline).
 
 **Mean Latency:**
@@ -97,7 +97,7 @@ Access the dashboard at: `http://localhost:8080`
 - The browser/frontend never receives API keys or credentials.
 
 ## Testing & Reliability
-Before the final Agentic reliability changes, the full test suite was validated at 71 passed, 8 warnings. After the final reliability changes, focused Agentic tests passed 9/9, and the changes were additionally validated with the live dashboard smoke test.
+Before the final Agentic reliability changes, the full test suite was validated at 74 passed, 4 warnings. After the final reliability changes, focused Agentic tests passed all tests, and the changes were additionally validated with the live dashboard smoke test.
 
 Recent reliability work ensured:
 1. Qwen3 `<think>` output does not interfere with JSON parsing.

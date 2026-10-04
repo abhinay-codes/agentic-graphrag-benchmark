@@ -19,8 +19,6 @@ class AgenticGraphRAGPipeline:
 
         state = self.orchestrator.run(state)
 
-        final_answer_prompt_tokens = 0
-        final_answer_eval_tokens = 0
         gen_time = 0.0
         citations = []
 
@@ -63,8 +61,7 @@ class AgenticGraphRAGPipeline:
             gen_time = time.time() - t0
 
             final_answer = res.get("response", "").strip()
-            final_answer_prompt_tokens = res.get("prompt_eval_count", 0)
-            final_answer_eval_tokens = res.get("eval_count", 0)
+        state.update_final_answer_tokens(res.get("prompt_eval_count", 0), res.get("eval_count", 0))
 
         for act in state.actions_taken:
             if act.get("status") == "error":
@@ -74,7 +71,7 @@ class AgenticGraphRAGPipeline:
         state.total_llm_duration_s += gen_time
         state.total_pipeline_duration_s = time.time() - start_time
 
-        total_toks = state.accumulated_total_tokens + final_answer_prompt_tokens + final_answer_eval_tokens
+        total_toks = state.total_tokens
 
         trace = {
             "question_id": state.question_id,
@@ -86,11 +83,13 @@ class AgenticGraphRAGPipeline:
             },
             "strategy_changes": state.strategy_changes,
             "token_usage": {
-                "controller_prompt_tokens": state.accumulated_prompt_tokens,
-                "controller_eval_tokens": state.accumulated_eval_tokens,
-                "final_answer_prompt_tokens": final_answer_prompt_tokens,
-                "final_answer_eval_tokens": final_answer_eval_tokens,
-                "total_tokens": total_toks
+                "controller_input_tokens": state.controller_input_tokens,
+                "controller_output_tokens": state.controller_output_tokens,
+                "evaluator_input_tokens": state.evaluator_input_tokens,
+                "evaluator_output_tokens": state.evaluator_output_tokens,
+                "final_answer_input_tokens": state.final_answer_input_tokens,
+                "final_answer_output_tokens": state.final_answer_output_tokens,
+                "total_tokens": state.total_tokens
             },
             "timing": {
                 "retrieval_s": state.total_retrieval_duration_s,

@@ -66,7 +66,8 @@ def test_benchmark_runner_lock_integration(tmp_path):
     # but we can mock _run_benchmark_internal
     import unittest.mock as mock
 
-    with mock.patch.object(runner, "_run_benchmark_internal") as mock_run:
+    with mock.patch.object(runner, "_run_benchmark_internal") as mock_run, \
+         mock.patch.object(runner, "validate_benchmark") as mock_validate:
         runner.run_benchmark(overwrite=True)
         mock_run.assert_called_once()
 

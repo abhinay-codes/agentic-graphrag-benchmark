@@ -19,9 +19,18 @@ class AgentState:
     evidence_evaluations: List[Dict[str, Any]] = field(default_factory=list)
     missing_information: str = "Initial search required."
 
-    accumulated_prompt_tokens: int = 0
-    accumulated_eval_tokens: int = 0
-    accumulated_total_tokens: int = 0
+    controller_input_tokens: int = 0
+    controller_output_tokens: int = 0
+    evaluator_input_tokens: int = 0
+    evaluator_output_tokens: int = 0
+    final_answer_input_tokens: int = 0
+    final_answer_output_tokens: int = 0
+
+    @property
+    def total_tokens(self) -> int:
+        return (self.controller_input_tokens + self.controller_output_tokens +
+                self.evaluator_input_tokens + self.evaluator_output_tokens +
+                self.final_answer_input_tokens + self.final_answer_output_tokens)
 
     total_retrieval_duration_s: float = 0.0
     total_llm_duration_s: float = 0.0
@@ -40,14 +49,57 @@ class AgentState:
             "status": status
         })
 
-    def update_tokens(self, prompt_tokens: int, eval_tokens: int):
-        self.accumulated_prompt_tokens += prompt_tokens
-        self.accumulated_eval_tokens += eval_tokens
-        self.accumulated_total_tokens += (prompt_tokens + eval_tokens)
+    def update_controller_tokens(self, prompt_tokens: int, eval_tokens: int):
+        self.controller_input_tokens += prompt_tokens
+        self.controller_output_tokens += eval_tokens
+
+    def update_evaluator_tokens(self, prompt_tokens: int, eval_tokens: int):
+        self.evaluator_input_tokens += prompt_tokens
+        self.evaluator_output_tokens += eval_tokens
+
+    def update_final_answer_tokens(self, prompt_tokens: int, eval_tokens: int):
+        self.final_answer_input_tokens += prompt_tokens
+        self.final_answer_output_tokens += eval_tokens
+
+    def _canonicalize_value(self, val: Any) -> Any:
+        if isinstance(val, (int, float)):
+            return str(val)
+        if isinstance(val, str):
+            return " ".join(val.lower().split())
+        if isinstance(val, dict):
+            return {k: self._canonicalize_value(v) for k, v in sorted(val.items())}
+        if isinstance(val, list):
+            return [self._canonicalize_value(v) for v in val]
+        return val
 
     def has_repeated_action(self, action: str, parameters: dict) -> bool:
-        # Prevent exact duplicate calls
+        canonical_params = self._canonicalize_value(parameters)
+
+        # Prevent semantically equivalent duplicate calls
+        similar_count = 0
         for act in self.actions_taken:
-            if act["action"] == action and act["parameters"] == parameters:
-                return True
+            if act["action"] == action:
+                if self._canonicalize_value(act["parameters"]) == canonical_params:
+                    return True
+                if action in ["vector_search", "graph_expansion"]:
+                    similar_count += 1
+
+        # Protect against wasting the entire budget on retrievals
+        if action in ["vector_search", "graph_expansion"] and similar_count >= 3:
+            return True
+
         return False
+
+    def add_candidate_evidence(self, chunks: List[Dict[str, Any]], provenance: List[Dict[str, Any]]):
+        if len(chunks) != len(provenance):
+            raise ValueError(f"Chunk/provenance alignment error: {len(chunks)} chunks vs {len(provenance)} provenance records")
+
+        existing_ids = {c["chunk_id"] for c in self.candidate_evidence if "chunk_id" in c}
+
+        for i, c in enumerate(chunks):
+            cid = c.get("chunk_id")
+            if not cid or cid not in existing_ids:
+                self.candidate_evidence.append(c)
+                self.retrieval_history.append(provenance[i])
+                if cid:
+                    existing_ids.add(cid)

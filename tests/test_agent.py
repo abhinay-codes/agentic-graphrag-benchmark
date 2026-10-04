@@ -216,3 +216,27 @@ def test_sufficient_evidence_allows_stop():
     assert state.current_step == 1
     assert state.stopping_reason == "done"
     assert not any("Blocked premature stop" in sc for sc in state.strategy_changes)
+
+def test_add_candidate_evidence_preserves_first_provenance():
+    from src.agent.state import AgentState
+    state = AgentState(question_id="q1", question="q1")
+
+    # First insertion
+    chunks1 = [{"chunk_id": "c1"}, {"chunk_id": "c2"}]
+    prov1 = [{"graph_path": "vector_search"}, {"graph_path": "vector_search"}]
+    state.add_candidate_evidence(chunks1, prov1)
+
+    # Second insertion (c1 is duplicate, c3 is new)
+    chunks2 = [{"chunk_id": "c1"}, {"chunk_id": "c3"}]
+    prov2 = [{"graph_path": "doc1 --HAS_CHUNK--> c1"}, {"graph_path": "doc2 --HAS_CHUNK--> c3"}]
+    state.add_candidate_evidence(chunks2, prov2)
+
+    assert len(state.candidate_evidence) == 3
+    assert state.candidate_evidence[0]["chunk_id"] == "c1"
+    assert state.candidate_evidence[1]["chunk_id"] == "c2"
+    assert state.candidate_evidence[2]["chunk_id"] == "c3"
+
+    # Prove first valid provenance was preserved for c1, and c3 got its provenance
+    assert state.retrieval_history[0]["graph_path"] == "vector_search"
+    assert state.retrieval_history[2]["graph_path"] == "doc2 --HAS_CHUNK--> c3"
+    assert len(state.candidate_evidence) == len(state.retrieval_history)

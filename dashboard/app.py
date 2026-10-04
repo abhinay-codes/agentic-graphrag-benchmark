@@ -10,7 +10,7 @@ import uuid
 import time
 import urllib.parse
 
-RESULTS_FILE = "reports/phase11_public_benchmark/results_public_100.jsonl"
+RESULTS_FILE = "reports/phase10_public_benchmark/results_official_public.jsonl"
 
 def process_results():
     stats = {
@@ -211,7 +211,7 @@ def generate_index_html():
 <body>
     <h1>Benchmark & Live Comparison</h1>
     <div class="tabs">
-        <button class="tab-btn active" onclick="showTab('benchmark')">Phase 11 Benchmark</button>
+        <button class="tab-btn active" onclick="showTab('benchmark')">Phase 10 Benchmark</button>
         <button class="tab-btn" onclick="showTab('live')">Live Interactive Demo</button>
     </div>
 """
@@ -381,20 +381,72 @@ def generate_index_html():
                 return;
             }
 
-            let html = `<h4>Answer</h4><p>${escapeHtml(res.answer || 'No answer')}</p>`;
+            let html = `<h4>Status</h4><p>SUCCESS</p>`;
+            html += `<h4>Answer</h4><p>${escapeHtml(res.answer || 'No answer')}</p>`;
 
-            // Use normalized latency_s field (set by backend normalization)
             let lat = Number(res.latency_s) || 0;
             let tok = Number(res.total_tokens) || 0;
+            let p_tok = Number(res.prompt_tokens) || 0;
+            let o_tok = Number(res.output_tokens) || 0;
+
+            // Check trace for token usage if top level not present
+            if(res.trace && res.trace.token_usage) {
+                if(p_tok === 0 && res.trace.token_usage.prompt_tokens) p_tok = res.trace.token_usage.prompt_tokens;
+                if(o_tok === 0 && res.trace.token_usage.eval_tokens) o_tok = res.trace.token_usage.eval_tokens;
+                if(tok === 0 && res.trace.token_usage.total_tokens) tok = res.trace.token_usage.total_tokens;
+
+                // Agentic granular token fallback
+                if(p_tok === 0) p_tok = (res.trace.token_usage.controller_input_tokens || 0) + (res.trace.token_usage.evaluator_input_tokens || 0) + (res.trace.token_usage.final_answer_input_tokens || 0);
+                if(o_tok === 0) o_tok = (res.trace.token_usage.controller_output_tokens || 0) + (res.trace.token_usage.evaluator_output_tokens || 0) + (res.trace.token_usage.final_answer_output_tokens || 0);
+            }
 
             document.getElementById('sum_stat_' + sumId).innerText = 'SUCCESS';
             document.getElementById('sum_lat_' + sumId).innerText = lat.toFixed(2);
             document.getElementById('sum_tok_' + sumId).innerText = tok;
 
-            html += `<h4>Metrics</h4><ul>
+            html += `<h4>Metrics & Telemetry</h4><ul>
                 <li>Latency: ${lat.toFixed(2)}s</li>
-                <li>Total Tokens: ${tok}</li>
-            </ul>`;
+                <li>Input/Prompt Tokens: ${p_tok}</li>
+                <li>Output Tokens: ${o_tok}</li>
+                <li>Total Tokens: ${tok}</li>`;
+
+            if(id === 'graphrag' || id === 'agentic') {
+                let rc = res.retrieved_chunks || (res.trace && res.trace.retrieved_chunks) || 0;
+                html += `<li>Retrieved Chunks: ${rc}</li>`;
+            }
+            if(id === 'graphrag' && res.trace) {
+                html += `<li>Graph Candidate Chunks: ${res.trace.graph_candidate_chunks || 0}</li>
+                         <li>Graph Documents: ${res.trace.graph_documents || 0}</li>
+                         <li>Graph Entities: ${res.trace.graph_entities || 0}</li>
+                         <li>Selected Chunks: ${res.trace.selected_chunks || 0}</li>`;
+            }
+            html += `</ul>`;
+
+            if(id === 'graphrag' && res.trace && res.trace.graph_provenance) {
+                html += `<h4>Graph Provenance</h4><ul>`;
+                res.trace.graph_provenance.forEach(p => {
+                    html += `<li><code>${escapeHtml(p.graph_path || JSON.stringify(p))}</code></li>`;
+                });
+                html += `</ul>`;
+            }
+
+            if(res.citations && res.citations.length > 0) {
+                html += `<h4>Citations / Evidence</h4><ul>`;
+                res.citations.forEach(c => {
+                    html += `<li>[${escapeHtml(c.doc_id || '?')}] ${escapeHtml(c.title || 'Unknown Title')}</li>`;
+                });
+                html += `</ul>`;
+            } else if(res.trace && res.trace.evidence_history) {
+                // Agentic chunks
+                let ev = res.trace.evidence_history.collected || [];
+                if(ev.length > 0) {
+                    html += `<h4>Evidence Chunks</h4><ul>`;
+                    ev.forEach(c => {
+                        html += `<li>[${escapeHtml(c.doc_id || '?')}] ${escapeHtml(c.title || 'Unknown Title')}</li>`;
+                    });
+                    html += `</ul>`;
+                }
+            }
 
             if(evalData && Object.keys(evalData).length > 0) {
                 if(evalData.error) {
@@ -413,11 +465,41 @@ def generate_index_html():
             if(id === 'agentic' && res.trace) {
                 let steps = res.trace.steps || [];
                 let stopReason = res.trace.stopping_reason || 'unknown';
-                html += `<h4>Agentic Telemetry</h4><ul>
+                let tools = res.trace.tools_used || [];
+                let actionSeq = steps.map(s => s.action || 'unknown');
+
+                html += `<h4>Agentic Trace</h4><ul>
                     <li>Steps: ${steps.length}</li>`;
                 if(steps.length > 0) {
-                    html += `<li>Actions: ${steps.map(s => escapeHtml(s.action)).join(' &rarr; ')}</li>`;
+                    html += `<li>Action Sequence: ${actionSeq.map(a => escapeHtml(a)).join(' &rarr; ')}</li>`;
                 }
+                if(tools.length > 0) {
+                    html += `<li>Tools Used: ${tools.map(t => escapeHtml(t)).join(', ')}</li>`;
+                }
+
+                let retMethods = new Set();
+                let strategyChanges = [];
+                steps.forEach(s => {
+                    if(s.action === 'vector_search' || s.action === 'graph_expansion' || s.action === 'document_retrieval' || s.action === 'entity_linking' || s.action === 'multi_hop_reasoning') {
+                        retMethods.add(s.action);
+                    }
+                    if(s.result && s.result.strategy_changes) {
+                        strategyChanges = strategyChanges.concat(s.result.strategy_changes);
+                    }
+                });
+
+                if(retMethods.size > 0) {
+                    html += `<li>Retrieval Methods: ${Array.from(retMethods).map(m => escapeHtml(m)).join(', ')}</li>`;
+                }
+
+                if(strategyChanges.length > 0) {
+                    html += `<li>Strategy Changes:<ul>`;
+                    strategyChanges.forEach(sc => {
+                        html += `<li>${escapeHtml(sc)}</li>`;
+                    });
+                    html += `</ul></li>`;
+                }
+
                 html += `<li>Stopping Reason: ${escapeHtml(stopReason)}</li>
                 </ul>`;
             }

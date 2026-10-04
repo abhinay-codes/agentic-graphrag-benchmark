@@ -344,9 +344,7 @@ class GraphRetriever:
 
                 if doc_id in seed_doc_ids:
                     path = (
-                        f"{doc_id} -> "
-                        f"HAS_CHUNK -> "
-                        f"{chunk_id}"
+                        f"{doc_id} --HAS_CHUNK--> {chunk_id}"
                     )
                     seed_docs_used = [doc_id]
                 else:
@@ -368,9 +366,9 @@ class GraphRetriever:
                             seed_docs_used = conn_seeds
                             first_seed = conn_seeds[0]
                             path = (
-                                f"{first_seed} -> {rel_type} -> "
-                                f"{ent_id} -> {rel_type} -> "
-                                f"{doc_id} -> HAS_CHUNK -> "
+                                f"{first_seed} --{rel_type}--> "
+                                f"{ent_id} <--{rel_type}-- "
+                                f"{doc_id} --HAS_CHUNK--> "
                                 f"{chunk_id}"
                             )
 
