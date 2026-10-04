@@ -61,7 +61,76 @@ def test_select_evidence_malformed_top_k():
 
 
 def test_select_evidence_valid_top_k():
-    pass
+    tools = AgentTools()
+    c = [{"chunk_id": str(i), "text": f"text{i}"} for i in range(5)]
+    p = [{"graph_path": f"path{i}"} for i in range(5)]
+
+    tools.llm_client.embed = unittest.mock.MagicMock(
+        side_effect=lambda x: [[1.0]] if isinstance(x, str) else [[float(i)] for i in range(len(x))]
+    )
+
+    res = tools.select_evidence("query", c, p, final_top_k=2)
+    assert "error" not in res
+    assert len(res["selected_chunks"]) == 2
+    assert len(res["selected_provenance"]) == 2
+
+    assert res["selected_chunks"][0]["chunk_id"] == "4"
+    assert res["selected_provenance"][0]["graph_path"] == "path4"
+
+    assert res["selected_chunks"][1]["chunk_id"] == "3"
+    assert res["selected_provenance"][1]["graph_path"] == "path3"
+
+def test_candidate_provenance_alignment_regression():
+    from src.agent.state import AgentState
+    state = AgentState(question_id="q1", question="q1")
+
+    # 1. Initial retrieval
+    state.add_candidate_evidence(
+        [{"chunk_id": "c1"}, {"chunk_id": "c2"}, {"chunk_id": "c3"}, {"chunk_id": "c4"}],
+        [{"graph_path": "p1"}, {"graph_path": "p2"}, {"graph_path": "p3"}, {"graph_path": "p4"}]
+    )
+
+    # Simulate select_evidence where c3 and c1 are selected
+    state.collected_evidence = [{"chunk_id": "c3"}, {"chunk_id": "c1"}]
+    state.retrieval_history = [{"graph_path": "p3"}, {"graph_path": "p1"}]
+
+    # 2. Add new candidate evidence
+    state.add_candidate_evidence(
+        [{"chunk_id": "c5"}],
+        [{"graph_path": "p5"}]
+    )
+
+    # Verify candidate alignment remains exactly as expected
+    assert len(state.candidate_evidence) == 5
+    assert len(state.candidate_provenance) == 5
+    assert state.candidate_evidence[0]["chunk_id"] == "c1"
+    assert state.candidate_provenance[0]["graph_path"] == "p1"
+    assert state.candidate_evidence[4]["chunk_id"] == "c5"
+    assert state.candidate_provenance[4]["graph_path"] == "p5"
+
+def test_entity_linking_agent_tool():
+    tools = AgentTools()
+    tools.graph_expansion = unittest.mock.MagicMock(return_value={"chunks": []})
+    tools.entity_linking(["entity1"])
+    tools.graph_expansion.assert_called_with(["entity1"], max_total_chunks=5)
+
+def test_multi_hop_reasoning_agent_tool():
+    tools = AgentTools()
+    tools.graph_expansion = unittest.mock.MagicMock(return_value={"chunks": []})
+    tools.multi_hop_reasoning(["entity1"])
+    tools.graph_expansion.assert_called_with(["entity1"], max_total_chunks=10)
+
+def test_action_budget_guard():
+    state = AgentState(question_id="q1", question="q1", maximum_steps=6)
+    state.actions_taken = [
+        {"action": "vector_search", "parameters": {}},
+        {"action": "graph_expansion", "parameters": {}},
+        {"action": "vector_search", "parameters": {"top_k": 10}},
+    ]
+    # 3 retrieval actions have occurred. Now a 4th retrieval action should be blocked.
+    assert state.has_repeated_action("vector_search", {"top_k": 5}) == True
+    assert state.has_repeated_action("evaluate_evidence", {}) == False
+
 
 
 def test_orchestrator_serialization():
@@ -237,6 +306,6 @@ def test_add_candidate_evidence_preserves_first_provenance():
     assert state.candidate_evidence[2]["chunk_id"] == "c3"
 
     # Prove first valid provenance was preserved for c1, and c3 got its provenance
-    assert state.retrieval_history[0]["graph_path"] == "vector_search"
-    assert state.retrieval_history[2]["graph_path"] == "doc2 --HAS_CHUNK--> c3"
-    assert len(state.candidate_evidence) == len(state.retrieval_history)
+    assert state.candidate_provenance[0]["graph_path"] == "vector_search"
+    assert state.candidate_provenance[2]["graph_path"] == "doc2 --HAS_CHUNK--> c3"
+    assert len(state.candidate_evidence) == len(state.candidate_provenance)

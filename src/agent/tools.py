@@ -31,7 +31,7 @@ class AgentTools:
 
     def entity_linking(self, entities: List[str]) -> Dict[str, Any]:
         """Explicit abstraction for Entity Linking."""
-        return self.graph_expansion(entities, top_k_chunks=5)
+        return self.graph_expansion(entities, max_total_chunks=5)
 
     def document_retrieval(self, query: str, top_k: int = 5) -> Dict[str, Any]:
         """Explicit abstraction for Document Retrieval."""
@@ -40,7 +40,7 @@ class AgentTools:
     def multi_hop_reasoning(self, entities: List[str], max_depth: int = 2) -> Dict[str, Any]:
         """Explicit abstraction for Multi-hop Graph Reasoning."""
         # Delegates to graph_expansion with potentially wider extraction
-        return self.graph_expansion(entities, top_k_chunks=10)
+        return self.graph_expansion(entities, max_total_chunks=10)
 
     def aggregate_evidence(self, question: str, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Explicit abstraction for Evidence Aggregation."""

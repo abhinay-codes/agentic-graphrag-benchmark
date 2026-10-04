@@ -158,25 +158,7 @@ class BenchmarkRunner:
                     citations=res.get("citations", []),
                     status="success"
                 )
-            elif pipeline_name == "GraphRAG":
-                return BenchmarkResult(
-                    question_id=q_id,
-                    pipeline=pipeline_name,
-                    question=question,
-                    answer=res.get("answer", ""),
-                    latency_s=duration,
-                    prompt_tokens=prompt_tokens,
-                    output_tokens=output_tokens,
-                    total_tokens=total_tokens,
-                    retrieved_chunks=trace.get("retrieved_chunk_count"),
-                    citations=res.get("citations", []),
-                    graph_candidate_chunks=trace.get("graph_candidate_chunk_count"),
-                    selected_chunks=trace.get("selected_chunk_count"),
-                    graph_documents=trace.get("related_document_count"),
-                    graph_entities=trace.get("entity_count"),
-                    graph_provenance=trace.get("graph_provenance"),
-                    status="success"
-                )
+
             elif pipeline_name == "GraphRAG":
                 return BenchmarkResult(
                     question_id=q_id,

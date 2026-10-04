@@ -9,6 +9,7 @@ class AgentState:
     maximum_steps: int = 6
 
     candidate_evidence: List[Dict[str, Any]] = field(default_factory=list)
+    candidate_provenance: List[Dict[str, Any]] = field(default_factory=list)
     collected_evidence: List[Dict[str, Any]] = field(default_factory=list)
 
     entities_discovered: List[str] = field(default_factory=list)
@@ -76,16 +77,16 @@ class AgentState:
         canonical_params = self._canonicalize_value(parameters)
 
         # Prevent semantically equivalent duplicate calls
-        similar_count = 0
+        retrieval_count = 0
         for act in self.actions_taken:
             if act["action"] == action:
                 if self._canonicalize_value(act["parameters"]) == canonical_params:
                     return True
-                if action in ["vector_search", "graph_expansion"]:
-                    similar_count += 1
+            if act["action"] in ["vector_search", "graph_expansion", "entity_linking", "document_retrieval", "multi_hop_reasoning"]:
+                retrieval_count += 1
 
         # Protect against wasting the entire budget on retrievals
-        if action in ["vector_search", "graph_expansion"] and similar_count >= 3:
+        if action in ["vector_search", "graph_expansion", "entity_linking", "document_retrieval", "multi_hop_reasoning"] and retrieval_count >= 3:
             return True
 
         return False
@@ -100,6 +101,6 @@ class AgentState:
             cid = c.get("chunk_id")
             if not cid or cid not in existing_ids:
                 self.candidate_evidence.append(c)
-                self.retrieval_history.append(provenance[i])
+                self.candidate_provenance.append(provenance[i])
                 if cid:
                     existing_ids.add(cid)
