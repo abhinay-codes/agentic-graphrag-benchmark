@@ -391,20 +391,19 @@ class GraphRetriever:
                 # Store provenance
                 # ----------------------------------------------------
 
-                if path is not None:
-                    provenance.append(
-                        {
-                            "chunk_id": chunk_id,
-                            "doc_id": doc_id,
-                            "title": doc_info["title"],
-                            "url": doc_info["url"],
-                            "chunk_index": chunk["chunk_index"],
-                            "text": chunk["text"],
-                            "seed_documents": seed_docs_used,
-                            "entities_used": doc_info["entities"],
-                            "graph_path": path,
-                        }
-                    )
+                provenance.append(
+                    {
+                        "chunk_id": chunk_id,
+                        "doc_id": doc_id,
+                        "title": doc_info["title"],
+                        "url": doc_info["url"],
+                        "chunk_index": chunk["chunk_index"],
+                        "text": chunk["text"],
+                        "seed_documents": seed_docs_used,
+                        "entities_used": doc_info["entities"],
+                        "graph_path": path,
+                    }
+                )
 
             if len(final_chunks) >= max_total_chunks:
                 break

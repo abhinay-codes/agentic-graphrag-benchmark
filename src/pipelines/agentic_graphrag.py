@@ -26,7 +26,9 @@ class AgenticGraphRAGPipeline:
         state.collected_evidence = final_evidence
 
         if not final_evidence:
+            res = {}
             final_answer = "Insufficient evidence to answer the question."
+            state.update_final_answer_tokens(0, 0)
         else:
             context_parts = []
             for c in final_evidence:
@@ -61,7 +63,7 @@ class AgenticGraphRAGPipeline:
             gen_time = time.time() - t0
 
             final_answer = res.get("response", "").strip()
-        state.update_final_answer_tokens(res.get("prompt_eval_count", 0), res.get("eval_count", 0))
+            state.update_final_answer_tokens(res.get("prompt_eval_count", 0), res.get("eval_count", 0))
 
         for act in state.actions_taken:
             if act.get("status") == "error":
@@ -96,7 +98,7 @@ class AgenticGraphRAGPipeline:
                 "llm_s": state.total_llm_duration_s,
                 "total_s": state.total_pipeline_duration_s
             },
-            "final_evidence_chunks": state.retrieval_history,
+            "final_evidence_chunks": state.collected_evidence,
             "stopping_reason": state.stopping_reason
         }
 

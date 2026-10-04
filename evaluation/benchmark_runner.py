@@ -154,7 +154,7 @@ class BenchmarkRunner:
                     prompt_tokens=prompt_tokens,
                     output_tokens=output_tokens,
                     total_tokens=total_tokens,
-                    retrieved_chunks=len(trace.get("retrieved_chunks", [])),
+                    retrieved_chunks=trace.get("retrieved_chunk_count", 0),
                     citations=res.get("citations", []),
                     status="success"
                 )
@@ -169,13 +169,13 @@ class BenchmarkRunner:
                     prompt_tokens=prompt_tokens,
                     output_tokens=output_tokens,
                     total_tokens=total_tokens,
-                    retrieved_chunks=len(trace.get("retrieved_chunks", [])),
+                    retrieved_chunks=trace.get("retrieved_chunk_count", 0),
                     citations=res.get("citations", []),
-                    graph_candidate_chunks=trace.get("graph_candidate_chunks", 0),
-                    selected_chunks=len(res.get("citations", [])),
-                    graph_documents=trace.get("graph_documents", 0),
-                    graph_entities=trace.get("graph_entities", 0),
-                    graph_provenance=trace.get("retrieval_provenance", []),
+                    graph_candidate_chunks=trace.get("graph_candidate_chunk_count", 0),
+                    selected_chunks=trace.get("selected_chunk_count", 0),
+                    graph_documents=trace.get("related_document_count", 0),
+                    graph_entities=trace.get("entity_count", 0),
+                    graph_provenance=trace.get("graph_provenance", []),
                     status="success"
                 )
             elif pipeline_name == "AgenticGraphRAG":
@@ -191,14 +191,14 @@ class BenchmarkRunner:
                     total_tokens=total_tokens,
                     retrieved_chunks=ev_hist.get("selected_chunks", 0),
                     citations=res.get("citations", []),
-                    graph_candidate_chunks=ev_hist.get("candidate_chunks", 0),
+                    graph_candidate_chunks=trace.get("graph_candidate_chunk_count", 0),
                     selected_chunks=ev_hist.get("selected_chunks", 0),
                     steps=trace.get("steps", []),
                     action_sequence=[s.get("action") for s in trace.get("steps", [])],
                     tools_used=trace.get("tools_used", []),
                     strategy_changes=trace.get("strategy_changes", []),
-                    controller_tokens=tok_usage.get("controller_prompt_tokens", 0) + tok_usage.get("controller_eval_tokens", 0),
-                    final_answer_tokens=tok_usage.get("final_answer_prompt_tokens", 0) + tok_usage.get("final_answer_eval_tokens", 0),
+                    controller_tokens=tok_usage.get("controller_input_tokens", 0) + tok_usage.get("controller_output_tokens", 0),
+                    final_answer_tokens=tok_usage.get("final_answer_input_tokens", 0) + tok_usage.get("final_answer_output_tokens", 0),
                     stopping_reason=trace.get("stopping_reason", ""),
                     status="success"
                 )

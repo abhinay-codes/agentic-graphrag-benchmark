@@ -167,7 +167,7 @@ class AgentOrchestrator:
 
             elif action == "select_evidence":
                 fk = params.get("final_top_k", 5)
-                out = self.tools.select_evidence(state.question, state.candidate_evidence, state.retrieval_history, fk)
+                out = self.tools.select_evidence(state.question, state.candidate_evidence, state.candidate_provenance, fk)
                 tool_result = out
                 if "error" in out:
                     tool_status = "error"
