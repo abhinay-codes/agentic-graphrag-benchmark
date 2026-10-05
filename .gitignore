@@ -1,15 +1,44 @@
-.venv/
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment/secrets
 .env
 .env.*
 !.env.example
-.vscode/
-scratch/
-*.log
-reports_out.txt
-data/hidden/
 
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs/temp
+*.log
+*.tmp
+*.bak
+scratch/
+reports_out.txt
+
+# Local/generated benchmark artifacts
+reports/hidden_benchmark/
+data/hidden/
 data/processed/
-reports/phase10_public_benchmark/
+
+# Local model/runtime/cache artifacts
+*.db
+*.sqlite
+*.sqlite3

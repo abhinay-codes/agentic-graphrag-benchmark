@@ -1,0 +1,19 @@
+{
+  "question_count": 100,
+  "pipelines": [
+    "RAG",
+    "GraphRAG",
+    "AgenticGraphRAG"
+  ],
+  "llm_model": "qwen3:8b",
+  "embedding_model": "nomic-embed-text",
+  "pipeline_retrieval_parameters": {
+    "top_k": 5,
+    "graph_max_chunks": 50,
+    "agent_max_steps": 6
+  },
+  "temperature": 0.0,
+  "corpus_document_count": "inherited_from_db",
+  "timestamp": 1791097482.8494637,
+  "hidden_data_isolation_assertion": "Confirmed: No access to data/hidden or evaluator fields during inference."
+}

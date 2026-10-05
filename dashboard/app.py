@@ -11,217 +11,198 @@ import time
 import urllib.parse
 
 RESULTS_FILE = "reports/phase10_public_benchmark/results_official_public.jsonl"
+PUBLIC_EVAL_FILE = "data/public/eval_public.jsonl"
 
 def process_results():
     stats = {
-        "raw_records": 0, "historical_errors": 0, "duplicates": 0, "unique_successes": 0,
-        "pipelines": {
-            "RAG": {"records": [], "latencies": [], "total_tokens": [], "prompt_tokens": [], "eval_tokens": []},
-            "GraphRAG": {"records": [], "latencies": [], "total_tokens": [], "prompt_tokens": [], "eval_tokens": []},
-            "AgenticGraphRAG": {"records": [], "latencies": [], "total_tokens": [], "prompt_tokens": [], "eval_tokens": [], "steps": [], "actions": {}, "stopping_reasons": {}}
-        },
         "questions": {}
     }
 
-    if not os.path.exists(RESULTS_FILE): return stats
-    successful_pairs = {}
-    import json
-    with open(RESULTS_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            if not line.strip(): continue
-            try:
-                rec = json.loads(line)
-                stats["raw_records"] += 1
-                q_id = rec.get("question_id")
-                pipeline = rec.get("pipeline")
-                status = rec.get("status")
+    # Load 100 public questions
+    if os.path.exists(PUBLIC_EVAL_FILE):
+        with open(PUBLIC_EVAL_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip(): continue
+                try:
+                    rec = json.loads(line)
+                    qid = rec["qid"]
+                    stats["questions"][qid] = {
+                        "qid": qid,
+                        "question": rec["question"],
+                        "RAG": None,
+                        "GraphRAG": None,
+                        "AgenticGraphRAG": None
+                    }
+                except json.JSONDecodeError:
+                    pass
 
-                if status != "success":
-                    stats["historical_errors"] += 1
-                    continue
-                if (q_id, pipeline) in successful_pairs:
-                    stats["duplicates"] += 1
-                    continue
-                successful_pairs[(q_id, pipeline)] = rec
+    # Load benchmark results
+    if os.path.exists(RESULTS_FILE):
+        with open(RESULTS_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip(): continue
+                try:
+                    rec = json.loads(line)
+                    qid = rec.get("question_id")
+                    pipeline = rec.get("pipeline")
 
-                if q_id not in stats["questions"]: stats["questions"][q_id] = {"question": rec.get("question", ""), "RAG": {}, "GraphRAG": {}, "AgenticGraphRAG": {}}
-                stats["questions"][q_id][pipeline] = rec
+                    if qid in stats["questions"] and pipeline in ["RAG", "GraphRAG", "AgenticGraphRAG"]:
+                        stats["questions"][qid][pipeline] = rec
+                except json.JSONDecodeError:
+                    pass
 
-                p_stats = stats["pipelines"].get(pipeline)
-                if not p_stats: continue
-                p_stats["records"].append(rec)
-
-                duration = rec.get("latency_s")
-                if duration is not None:
-                    p_stats["latencies"].append(duration)
-                    stats["questions"][q_id][pipeline]["latency"] = duration
-
-                total = rec.get("total_tokens")
-                if total is not None:
-                    p_stats["total_tokens"].append(total)
-                    stats["questions"][q_id][pipeline]["tokens"] = total
-
-                pt = rec.get("prompt_tokens")
-                et = rec.get("output_tokens")
-                if pt is not None: p_stats["prompt_tokens"].append(pt)
-                if et is not None: p_stats["eval_tokens"].append(et)
-
-                if pipeline == "AgenticGraphRAG":
-                    steps = rec.get("steps")
-                    if steps is not None and isinstance(steps, list):
-                        p_stats["steps"].append(len(steps))
-
-                    actions = rec.get("action_sequence")
-                    if actions is not None and isinstance(actions, list):
-                        for act in actions:
-                            p_stats["actions"][act] = p_stats["actions"].get(act, 0) + 1
-
-                    stop_reason = rec.get("stopping_reason")
-                    if stop_reason is not None:
-                        p_stats["stopping_reasons"][stop_reason] = p_stats["stopping_reasons"].get(stop_reason, 0) + 1
-            except: pass
-    stats["unique_successes"] = len(successful_pairs)
     return stats
-
-def safe_mean(lst): return sum(lst)/len(lst) if lst else 0
-def safe_median(lst): return statistics.median(lst) if lst else 0
-
-def generate_benchmark_html(stats):
-    html = f"""
-    <div class="row">
-        <div class="col card">
-            <h2>Benchmark Coverage</h2>
-            <p><strong>100</strong> public questions</p>
-            <p><strong>300</strong> pipeline/question evaluations</p>
-            <p><strong>{stats['unique_successes']}</strong> successful evaluations</p>
-            <p><strong>{300 - stats['unique_successes']}</strong> missing successful pairs</p>
-            <div class="bar-container"><div class="bar" style="width: {(stats['unique_successes']/300)*100}%;"></div></div>
-        </div>
-        <div class="col card">
-            <h2>Historical Failures</h2>
-            <p><strong>Raw records:</strong> {stats['raw_records']}</p>
-            <p><strong>Historical error records:</strong> {stats['historical_errors']}</p>
-            <p><strong>Duplicate pairs:</strong> {stats['duplicates']}</p>
-            <p><strong>Unique successful pairs:</strong> {stats['unique_successes']}</p>
-        </div>
-    </div>
-
-    <div class="card">
-        <h2>Pipeline Comparison</h2>
-        <table>
-            <tr><th>Metric</th><th>RAG</th><th>GraphRAG</th><th>Agentic GraphRAG</th></tr>
-            <tr><td>Successful Evaluations</td><td>{len(stats['pipelines']['RAG']['records'])}/100</td><td>{len(stats['pipelines']['GraphRAG']['records'])}/100</td><td>{len(stats['pipelines']['AgenticGraphRAG']['records'])}/100</td></tr>
-            <tr><td>Mean Latency (s)</td><td>{safe_mean(stats['pipelines']['RAG']['latencies']):.2f}</td><td>{safe_mean(stats['pipelines']['GraphRAG']['latencies']):.2f}</td><td>{safe_mean(stats['pipelines']['AgenticGraphRAG']['latencies']):.2f}</td></tr>
-            <tr><td>Median Latency (s)</td><td>{safe_median(stats['pipelines']['RAG']['latencies']):.2f}</td><td>{safe_median(stats['pipelines']['GraphRAG']['latencies']):.2f}</td><td>{safe_median(stats['pipelines']['AgenticGraphRAG']['latencies']):.2f}</td></tr>
-            <tr><td>Mean Prompt Tokens</td><td>{safe_mean(stats['pipelines']['RAG']['prompt_tokens']):.0f}</td><td>{safe_mean(stats['pipelines']['GraphRAG']['prompt_tokens']):.0f}</td><td>{safe_mean(stats['pipelines']['AgenticGraphRAG']['prompt_tokens']):.0f}</td></tr>
-            <tr><td>Mean Output Tokens</td><td>{safe_mean(stats['pipelines']['RAG']['eval_tokens']):.0f}</td><td>{safe_mean(stats['pipelines']['GraphRAG']['eval_tokens']):.0f}</td><td>{safe_mean(stats['pipelines']['AgenticGraphRAG']['eval_tokens']):.0f}</td></tr>
-            <tr><td>Mean Total Tokens</td><td>{safe_mean(stats['pipelines']['RAG']['total_tokens']):.0f}</td><td>{safe_mean(stats['pipelines']['GraphRAG']['total_tokens']):.0f}</td><td>{safe_mean(stats['pipelines']['AgenticGraphRAG']['total_tokens']):.0f}</td></tr>
-        </table>
-    </div>
-
-    <div class="row">
-        <div class="col card">
-            <h2>Agentic-Specific Metrics</h2>
-            <p><strong>Mean Steps:</strong> {safe_mean(stats['pipelines']['AgenticGraphRAG']['steps']):.2f}</p>
-            <p><strong>Median Steps:</strong> {safe_median(stats['pipelines']['AgenticGraphRAG']['steps'])}</p>
-            <h3>Action Frequencies</h3><ul>{"".join([f"<li>{k}: {v}</li>" for k,v in stats['pipelines']['AgenticGraphRAG']['actions'].items()])}</ul>
-            <h3>Stopping Reasons</h3><ul>{"".join([f"<li>{k}: {v}</li>" for k,v in stats['pipelines']['AgenticGraphRAG']['stopping_reasons'].items()])}</ul>
-        </div>
-        <div class="col card">
-            <h2>Retrieval & Evidence</h2>
-            <p>Provenance citations are strictly verified for Agentic Pipeline.</p>
-            <p>Number of Agentic runs with valid traces: {sum(1 for x in stats['pipelines']['AgenticGraphRAG']['records'] if x.get("action_sequence") is not None)}</p>
-            <canvas id="latencyChart"></canvas>
-        </div>
-    </div>
-
-    <div class="card">
-        <h2>Question-Level View</h2>
-    """
-    for q_id, data in sorted(stats['questions'].items()):
-        html += f"""
-        <details>
-            <summary>{q_id}: {data['question'].replace('<', '&lt;').replace('>', '&gt;')}</summary>
-            <table>
-                <tr><th>Pipeline</th><th>Latency (s)</th><th>Tokens</th><th>Answer Snapshot</th></tr>
-                <tr><td>RAG</td><td>{round(data['RAG'].get('latency', 0), 2) if isinstance(data['RAG'].get('latency'), (int, float)) else 'N/A'}</td><td>{data['RAG'].get('tokens', 'N/A')}</td><td><pre>{str(data['RAG'].get('answer', ''))[:200].replace('<', '&lt;').replace('>', '&gt;')}...</pre></td></tr>
-                <tr><td>GraphRAG</td><td>{round(data['GraphRAG'].get('latency', 0), 2) if isinstance(data['GraphRAG'].get('latency'), (int, float)) else 'N/A'}</td><td>{data['GraphRAG'].get('tokens', 'N/A')}</td><td><pre>{str(data['GraphRAG'].get('answer', ''))[:200].replace('<', '&lt;').replace('>', '&gt;')}...</pre></td></tr>
-                <tr><td>AgenticGraphRAG</td><td>{round(data['AgenticGraphRAG'].get('latency', 0), 2) if isinstance(data['AgenticGraphRAG'].get('latency'), (int, float)) else 'N/A'}</td><td>{data['AgenticGraphRAG'].get('tokens', 'N/A')}</td><td><pre>{str(data['AgenticGraphRAG'].get('answer', ''))[:200].replace('<', '&lt;').replace('>', '&gt;')}...</pre></td></tr>
-            </table>
-        </details>"""
-    html += "</div>"
-
-    # Chart Script
-    html += f"""
-    <script>
-        var ctx = document.getElementById('latencyChart');
-        if(ctx) {{
-            new Chart(ctx.getContext('2d'), {{
-                type: 'bar',
-                data: {{
-                    labels: ['RAG', 'GraphRAG', 'Agentic GraphRAG'],
-                    datasets: [{{
-                        label: 'Mean Latency (s)',
-                        data: [{safe_mean(stats['pipelines']['RAG']['latencies']):.2f}, {safe_mean(stats['pipelines']['GraphRAG']['latencies']):.2f}, {safe_mean(stats['pipelines']['AgenticGraphRAG']['latencies']):.2f}],
-                        backgroundColor: ['#36a2eb', '#ff6384', '#4bc0c0']
-                    }}]
-                }}
-            }});
-        }}
-    </script>
-    """
-    return html
 
 def generate_index_html():
     stats = process_results()
-    bench_html = generate_benchmark_html(stats)
+
+    # Serialize stats for JS
+    def json_default(obj):
+        return str(obj)
+    stats_json = json.dumps(stats, default=json_default)
 
     head_html = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Gate 6 & Demo Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Agentic GraphRAG Benchmark</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; }
-        h1, h2, h3 { color: #333; }
-        .card { background: white; padding: 15px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; vertical-align: top; }
-        th { background-color: #f8f9fa; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f9; color: #333; }
+        h1, h2, h3, h4 { color: #222; margin-top: 0; }
+        .header { margin-bottom: 20px; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .header h1 { margin-bottom: 5px; }
+        .header h3 { color: #666; font-weight: normal; margin-bottom: 20px; }
+        .overview-stats { display: flex; gap: 20px; }
+        .stat-box { background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #ddd; flex: 1; text-align: center; }
+        .stat-box .number { font-size: 24px; font-weight: bold; color: #007bff; }
+        .stat-box .label { font-size: 14px; color: #555; text-transform: uppercase; margin-top: 5px; }
+
+        .card { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .selector-area { margin-bottom: 20px; }
+        select { width: 100%; padding: 10px; font-size: 16px; border-radius: 4px; border: 1px solid #ccc; }
+
         .row { display: flex; gap: 20px; flex-wrap: wrap; }
         .col { flex: 1; min-width: 300px; }
-        .bar-container { width: 100%; background-color: #eee; border-radius: 4px; overflow: hidden; margin-top: 5px; }
-        .bar { height: 20px; background-color: #4CAF50; }
-        pre { white-space: pre-wrap; word-wrap: break-word; background: #eee; padding: 10px; border-radius: 4px; font-size: 12px; }
-        details { margin-bottom: 10px; padding: 10px; background: white; border-radius: 5px; border: 1px solid #ccc; }
-        summary { font-weight: bold; cursor: pointer; }
+        .pipeline-card { background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd; display: flex; flex-direction: column; }
+        .pipeline-card h2 { text-align: center; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 15px; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th { background-color: #f8f9fa; }
+        tr:hover { background-color: #f1f1f1; }
+
+        .status-badge { padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+        .status-complete { background: #d4edda; color: #155724; }
+        .status-pending { background: #fff3cd; color: #856404; }
+        .status-failed { background: #f8d7da; color: #721c24; }
+
+        details { margin-top: 15px; background: #f8f9fa; border-radius: 5px; border: 1px solid #ddd; }
+        summary { font-weight: bold; padding: 10px; cursor: pointer; user-select: none; }
+        details > div { padding: 15px; border-top: 1px solid #ddd; font-size: 14px; }
+
+        pre { white-space: pre-wrap; word-wrap: break-word; background: #eee; padding: 10px; border-radius: 4px; font-size: 13px; max-height: 400px; overflow-y: auto; }
+        ul { margin-top: 5px; padding-left: 20px; }
+        li { margin-bottom: 5px; }
+
         .tabs { margin-bottom: 20px; }
         .tab-btn { padding: 10px 20px; cursor: pointer; font-size: 16px; border: none; background: #ddd; margin-right: 5px; border-radius: 5px 5px 0 0; }
-        .tab-btn.active { background: #4CAF50; color: white; }
+        .tab-btn.active { background: #007bff; color: white; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
-        .btn { padding: 10px 15px; background: #007bff; color: white; border: none; cursor: pointer; border-radius: 5px; font-size: 16px; }
+
+        .btn { padding: 8px 12px; background: #007bff; color: white; border: none; cursor: pointer; border-radius: 4px; font-size: 14px; }
         .btn:hover { background: #0056b3; }
-        .btn:disabled { background: #ccc; cursor: not-allowed; }
-        input, select, textarea { width: 100%; padding: 8px; margin: 5px 0 15px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-        .status-msg { font-weight: bold; color: #d9534f; }
+
+        /* Live Demo Specific */
+        #live input, #live select, #live textarea { width: 100%; padding: 8px; margin: 5px 0 15px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
     </style>
 </head>
 <body>
-    <h1>Benchmark & Live Comparison</h1>
     <div class="tabs">
         <button class="tab-btn active" onclick="showTab('benchmark')">Phase 10 Benchmark</button>
         <button class="tab-btn" onclick="showTab('live')">Live Interactive Demo</button>
     </div>
-"""
 
-    live_html = """
     <div id="benchmark" class="tab-content active">
-        <!-- BENCH_HTML -->
+        <div class="header">
+            <h1>Agentic GraphRAG Benchmark</h1>
+            <h3>RAG vs GraphRAG vs Agentic GraphRAG</h3>
+            <div class="overview-stats">
+                <div class="stat-box">
+                    <div class="number" id="stat-public">100</div>
+                    <div class="label">Public Questions</div>
+                </div>
+                <div class="stat-box">
+                    <div class="number" id="stat-completed">0</div>
+                    <div class="label">Completed Pipelines</div>
+                </div>
+                <div class="stat-box">
+                    <div class="number" id="stat-status">In Progress</div>
+                    <div class="label">Benchmark Status</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card selector-area">
+            <h2>Select a Question</h2>
+            <select id="question-selector" onchange="renderSelectedQuestion()"></select>
+            <div id="selected-question-text" style="margin-top: 15px; font-size: 18px; font-weight: bold;"></div>
+        </div>
+
+        <div class="row" id="pipeline-cards">
+            <!-- RAG -->
+            <div class="col pipeline-card" id="card-rag">
+                <h2>RAG</h2>
+                <div class="content">Select a question...</div>
+            </div>
+            <!-- GraphRAG -->
+            <div class="col pipeline-card" id="card-graphrag">
+                <h2>GraphRAG</h2>
+                <div class="content">Select a question...</div>
+            </div>
+            <!-- Agentic -->
+            <div class="col pipeline-card" id="card-agentic">
+                <h2>Agentic GraphRAG</h2>
+                <div class="content">Select a question...</div>
+            </div>
+        </div>
+
+        <div class="card" id="metrics-card" style="display:none;">
+            <h2>Metrics Comparison</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Pipeline</th>
+                        <th>Input Tokens</th>
+                        <th>Output Tokens</th>
+                        <th>Total Tokens</th>
+                        <th>Latency (s)</th>
+                    </tr>
+                </thead>
+                <tbody id="metrics-body"></tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>All Public Questions</h2>
+            <table id="questions-table">
+                <thead>
+                    <tr>
+                        <th>QID</th>
+                        <th style="width: 40%;">Question</th>
+                        <th>RAG</th>
+                        <th>GraphRAG</th>
+                        <th>Agentic</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
     </div>
 
     <div id="live" class="tab-content">
+        <!-- Preserve existing Live Demo UI -->
         <div class="card">
             <h2>LLM Configuration (Applies to all 3 pipelines)</h2>
             <div class="row">
@@ -256,16 +237,16 @@ def generate_index_html():
             <textarea id="question" rows="3" placeholder="Enter your question here..."></textarea>
             <label>Optional Reference Answer (for LLM Judge Evaluation):</label>
             <textarea id="reference" rows="2" placeholder="Enter a reference answer if you want automated evaluation..."></textarea>
-            <button class="btn" id="runBtn" onclick="runLiveQuery()">RUN ALL THREE</button>
-            <div id="status" class="status-msg" style="margin-top: 10px;"></div>
+            <button class="btn" id="runBtn" onclick="runLiveQuery()" style="padding:10px 15px; font-size:16px;">RUN ALL THREE</button>
+            <div id="status" class="status-msg" style="margin-top: 10px; font-weight:bold; color:#d9534f;"></div>
         </div>
 
         <div id="resultsArea" style="display: none;">
             <h2 style="text-align:center;">Results (<span id="used_provider"></span> / <span id="used_model"></span>)</h2>
             <div class="row">
-                <div class="col card" id="res_rag"><h3>RAG</h3><div class="content">Waiting...</div></div>
-                <div class="col card" id="res_graphrag"><h3>GraphRAG</h3><div class="content">Waiting...</div></div>
-                <div class="col card" id="res_agentic"><h3>Agentic GraphRAG</h3><div class="content">Waiting...</div></div>
+                <div class="col pipeline-card" id="res_rag"><h2>RAG</h2><div class="content" style="padding:15px;">Waiting...</div></div>
+                <div class="col pipeline-card" id="res_graphrag"><h2>GraphRAG</h2><div class="content" style="padding:15px;">Waiting...</div></div>
+                <div class="col pipeline-card" id="res_agentic"><h2>Agentic GraphRAG</h2><div class="content" style="padding:15px;">Waiting...</div></div>
             </div>
 
             <div class="card">
@@ -283,6 +264,214 @@ def generate_index_html():
     </div>
 
     <script>
+        const stats = """ + stats_json + """;
+        const questionsList = Object.values(stats.questions);
+
+        function escapeHtml(unsafe) {
+            if (unsafe == null) return "N/A";
+            return String(unsafe)
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+        }
+
+        function initDashboard() {
+            // Populate overview
+            document.getElementById('stat-public').innerText = questionsList.length;
+            let completedPipelines = 0;
+            questionsList.forEach(q => {
+                if (q.RAG && q.RAG.status === 'success') completedPipelines++;
+                if (q.GraphRAG && q.GraphRAG.status === 'success') completedPipelines++;
+                if (q.AgenticGraphRAG && q.AgenticGraphRAG.status === 'success') completedPipelines++;
+            });
+            document.getElementById('stat-completed').innerText = completedPipelines;
+
+            if (completedPipelines >= questionsList.length * 3 && questionsList.length > 0) {
+                document.getElementById('stat-status').innerText = 'Complete';
+                document.getElementById('stat-status').style.color = '#155724';
+            }
+
+            // Populate selector
+            const sel = document.getElementById('question-selector');
+            sel.innerHTML = '<option value="">-- Select a Question --</option>';
+            questionsList.forEach(q => {
+                const opt = document.createElement('option');
+                opt.value = q.qid;
+                opt.innerText = `[${q.qid}] ${q.question.substring(0, 100)}...`;
+                sel.appendChild(opt);
+            });
+
+            // Populate table
+            const tbody = document.querySelector('#questions-table tbody');
+            tbody.innerHTML = '';
+            questionsList.forEach(q => {
+                const tr = document.createElement('tr');
+
+                const sRag = q.RAG ? (q.RAG.status === 'success' ? 'complete' : 'failed') : 'pending';
+                const sGr = q.GraphRAG ? (q.GraphRAG.status === 'success' ? 'complete' : 'failed') : 'pending';
+                const sAg = q.AgenticGraphRAG ? (q.AgenticGraphRAG.status === 'success' ? 'complete' : 'failed') : 'pending';
+
+                tr.innerHTML = `
+                    <td>${escapeHtml(q.qid)}</td>
+                    <td>${escapeHtml(q.question)}</td>
+                    <td><span class="status-badge status-${sRag}">${sRag.toUpperCase()}</span></td>
+                    <td><span class="status-badge status-${sGr}">${sGr.toUpperCase()}</span></td>
+                    <td><span class="status-badge status-${sAg}">${sAg.toUpperCase()}</span></td>
+                    <td><button class="btn" onclick="selectQuestion('${q.qid}')">View</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function selectQuestion(qid) {
+            document.getElementById('question-selector').value = qid;
+            renderSelectedQuestion();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function renderSelectedQuestion() {
+            const qid = document.getElementById('question-selector').value;
+            if (!qid) {
+                document.getElementById('selected-question-text').innerText = '';
+                document.getElementById('card-rag').querySelector('.content').innerHTML = 'Select a question...';
+                document.getElementById('card-graphrag').querySelector('.content').innerHTML = 'Select a question...';
+                document.getElementById('card-agentic').querySelector('.content').innerHTML = 'Select a question...';
+                document.getElementById('metrics-card').style.display = 'none';
+                return;
+            }
+
+            const q = stats.questions[qid];
+            document.getElementById('selected-question-text').innerText = q.question;
+
+            renderPipeline('RAG', q.RAG, 'card-rag');
+            renderPipeline('GraphRAG', q.GraphRAG, 'card-graphrag');
+            renderPipeline('Agentic GraphRAG', q.AgenticGraphRAG, 'card-agentic');
+
+            // Render metrics table
+            document.getElementById('metrics-card').style.display = 'block';
+            const mBody = document.getElementById('metrics-body');
+            mBody.innerHTML = '';
+
+            ['RAG', 'GraphRAG', 'Agentic GraphRAG'].forEach(pName => {
+                const key = pName === 'Agentic GraphRAG' ? 'AgenticGraphRAG' : pName;
+                const res = q[key];
+
+                let iTok = 'N/A', oTok = 'N/A', tTok = 'N/A', lat = 'N/A';
+                if (res && res.status === 'success') {
+                    iTok = res.prompt_tokens ?? 'N/A';
+                    oTok = res.output_tokens ?? 'N/A';
+                    tTok = res.total_tokens ?? 'N/A';
+                    lat = (res.latency_s != null) ? Number(res.latency_s).toFixed(2) : 'N/A';
+                }
+
+                mBody.innerHTML += `
+                    <tr>
+                        <td><strong>${pName}</strong></td>
+                        <td>${iTok}</td>
+                        <td>${oTok}</td>
+                        <td>${tTok}</td>
+                        <td>${lat}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function renderPipeline(name, data, cardId) {
+            const container = document.getElementById(cardId).querySelector('.content');
+            if (!data) {
+                container.innerHTML = `<div class="status-badge status-pending" style="display:inline-block;">Pending benchmark result</div>`;
+                return;
+            }
+            if (data.status !== 'success') {
+                container.innerHTML = `
+                    <div class="status-badge status-failed" style="display:inline-block; margin-bottom:10px;">FAILED</div>
+                    <pre style="color:red;">${escapeHtml(data.error)}</pre>
+                `;
+                return;
+            }
+
+            let html = `<h4>Answer</h4><pre>${escapeHtml(data.answer)}</pre>`;
+
+            if (name === 'RAG') {
+                if (data.citations && data.citations.length > 0) {
+                    html += `<details><summary>Evidence / Citations</summary><div><ul>`;
+                    data.citations.forEach(c => {
+                         html += `<li>[${escapeHtml(c.doc_id)}] ${escapeHtml(c.title)}</li>`;
+                    });
+                    html += `</ul></div></details>`;
+                }
+            }
+
+            if (name === 'GraphRAG') {
+                html += `<details><summary>GraphRAG Evidence / Provenance</summary><div>`;
+
+                html += `<ul>
+                    <li>Selected Chunks: ${escapeHtml(data.selected_chunks ?? (data.trace?.selected_chunks) ?? 'Not available')}</li>
+                    <li>Graph Candidate Chunks: ${escapeHtml(data.graph_candidate_chunks ?? (data.trace?.graph_candidate_chunks) ?? 'Not available')}</li>
+                    <li>Related Document Count: ${escapeHtml(data.related_document_count ?? (data.trace?.related_document_count) ?? 'Not available')}</li>
+                    <li>Entity Count: ${escapeHtml(data.entity_count ?? (data.trace?.entity_count) ?? 'Not available')}</li>
+                </ul>`;
+
+                const prov = data.graph_provenance || (data.trace?.graph_provenance);
+                if (prov && prov.length > 0) {
+                    html += `<h5>Graph Paths (Provenance)</h5><ul>`;
+                    prov.forEach(p => {
+                        html += `<li><code>${escapeHtml(p.graph_path)}</code><br/>
+                        <small>Doc: ${escapeHtml(p.doc_id)} | Chunk: ${escapeHtml(p.chunk_id)} | Entities: ${escapeHtml((p.entities_used || []).join(', '))}</small>
+                        <br/><i>${escapeHtml(p.text)}</i>
+                        </li>`;
+                    });
+                    html += `</ul>`;
+                }
+                html += `</div></details>`;
+            }
+
+            if (name === 'Agentic GraphRAG') {
+                html += `<details><summary>Agentic Trace</summary><div>`;
+
+                html += `<ul>
+                    <li>Stopping Reason: ${escapeHtml(data.stopping_reason ?? (data.trace?.stopping_reason) ?? 'Not available')}</li>
+                    <li>Tools/Methods Used: ${escapeHtml((data.tools_used ?? (data.trace?.tools_used) ?? []).join(', ') || 'Not available')}</li>
+                </ul>`;
+
+                const steps = data.steps || (data.trace?.steps);
+                if (steps && steps.length > 0) {
+                    html += `<h5>Reasoning / Controller Steps</h5><ol>`;
+                    steps.forEach(s => {
+                        html += `<li><strong>Action:</strong> ${escapeHtml(s.action)}<br/>`;
+                        if (s.result && s.result.strategy_changes && s.result.strategy_changes.length > 0) {
+                            html += `<em>Strategy Changes:</em> <ul>`;
+                            s.result.strategy_changes.forEach(sc => {
+                                html += `<li>${escapeHtml(sc)}</li>`;
+                            });
+                            html += `</ul>`;
+                        }
+                        if (s.result && s.result.evidence_found !== undefined) {
+                            html += `<em>Evidence found:</em> ${s.result.evidence_found}<br/>`;
+                        }
+                        html += `</li>`;
+                    });
+                    html += `</ol>`;
+                }
+
+                const ev = data.evidence_history?.collected || data.trace?.evidence_history?.collected || [];
+                if (ev.length > 0) {
+                    html += `<h5>Evidence / Chunks</h5><ul>`;
+                    ev.forEach(c => {
+                        html += `<li>[${escapeHtml(c.doc_id)}] ${escapeHtml(c.title)}</li>`;
+                    });
+                    html += `</ul>`;
+                }
+
+                html += `</div></details>`;
+            }
+
+            container.innerHTML = html;
+        }
+
+        /* Tabs Logic */
         function showTab(id) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -290,6 +479,7 @@ def generate_index_html():
             event.currentTarget.classList.add('active');
         }
 
+        /* Live Demo Logic */
         function updateModels() {
             const p = document.getElementById('provider').value;
             const m = document.getElementById('model');
@@ -329,7 +519,6 @@ def generate_index_html():
 
             try {
                 document.getElementById('status').innerText = 'Running sequentially: RAG -> GraphRAG -> Agentic GraphRAG... (Please wait)';
-
                 const res = await fetch('/api/live-query', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -345,30 +534,17 @@ def generate_index_html():
 
                 document.getElementById('status').innerText = 'Complete!';
 
-                // Render RAG
-                renderCard('rag', data.results.RAG, data.evaluations.RAG, 'rag');
-                // Render GraphRAG
-                renderCard('graphrag', data.results.GraphRAG, data.evaluations.GraphRAG, 'gr');
-                // Render Agentic
-                renderCard('agentic', data.results.AgenticGraphRAG, data.evaluations.AgenticGraphRAG, 'ag');
+                renderLiveCard('rag', data.results.RAG, data.evaluations.RAG, 'rag');
+                renderLiveCard('graphrag', data.results.GraphRAG, data.evaluations.GraphRAG, 'gr');
+                renderLiveCard('agentic', data.results.AgenticGraphRAG, data.evaluations.AgenticGraphRAG, 'ag');
 
             } catch(e) {
                 document.getElementById('status').innerText = 'Error: ' + e.message;
             }
-
             document.getElementById('runBtn').disabled = false;
         }
 
-        function escapeHtml(unsafe) {
-            return String(unsafe)
-                 .replace(/&/g, "&amp;")
-                 .replace(/</g, "&lt;")
-                 .replace(/>/g, "&gt;")
-                 .replace(/"/g, "&quot;")
-                 .replace(/'/g, "&#039;");
-         }
-
-        function renderCard(id, res, evalData, sumId) {
+        function renderLiveCard(id, res, evalData, sumId) {
             const div = document.querySelector('#res_' + id + ' .content');
             if(!res) {
                 div.innerHTML = `<p style="color:red">No result returned</p>`;
@@ -386,67 +562,10 @@ def generate_index_html():
 
             let lat = Number(res.latency_s) || 0;
             let tok = Number(res.total_tokens) || 0;
-            let p_tok = Number(res.prompt_tokens) || 0;
-            let o_tok = Number(res.output_tokens) || 0;
-
-            // Check trace for token usage if top level not present
-            if(res.trace && res.trace.token_usage) {
-                if(p_tok === 0 && res.trace.token_usage.prompt_tokens) p_tok = res.trace.token_usage.prompt_tokens;
-                if(o_tok === 0 && res.trace.token_usage.eval_tokens) o_tok = res.trace.token_usage.eval_tokens;
-                if(tok === 0 && res.trace.token_usage.total_tokens) tok = res.trace.token_usage.total_tokens;
-
-                // Agentic granular token fallback
-                if(p_tok === 0) p_tok = (res.trace.token_usage.controller_input_tokens || 0) + (res.trace.token_usage.evaluator_input_tokens || 0) + (res.trace.token_usage.final_answer_input_tokens || 0);
-                if(o_tok === 0) o_tok = (res.trace.token_usage.controller_output_tokens || 0) + (res.trace.token_usage.evaluator_output_tokens || 0) + (res.trace.token_usage.final_answer_output_tokens || 0);
-            }
 
             document.getElementById('sum_stat_' + sumId).innerText = 'SUCCESS';
             document.getElementById('sum_lat_' + sumId).innerText = lat.toFixed(2);
             document.getElementById('sum_tok_' + sumId).innerText = tok;
-
-            html += `<h4>Metrics & Telemetry</h4><ul>
-                <li>Latency: ${lat.toFixed(2)}s</li>
-                <li>Input/Prompt Tokens: ${p_tok}</li>
-                <li>Output Tokens: ${o_tok}</li>
-                <li>Total Tokens: ${tok}</li>`;
-
-            if(id === 'graphrag' || id === 'agentic') {
-                let rc = res.retrieved_chunks || (res.trace && res.trace.retrieved_chunks) || 0;
-                html += `<li>Retrieved Chunks: ${rc}</li>`;
-            }
-            if(id === 'graphrag' && res.trace) {
-                html += `<li>Graph Candidate Chunks: ${res.trace.graph_candidate_chunks || 0}</li>
-                         <li>Graph Documents: ${res.trace.graph_documents || 0}</li>
-                         <li>Graph Entities: ${res.trace.graph_entities || 0}</li>
-                         <li>Selected Chunks: ${res.trace.selected_chunks || 0}</li>`;
-            }
-            html += `</ul>`;
-
-            if(id === 'graphrag' && res.trace && res.trace.graph_provenance) {
-                html += `<h4>Graph Provenance</h4><ul>`;
-                res.trace.graph_provenance.forEach(p => {
-                    html += `<li><code>${escapeHtml(p.graph_path || JSON.stringify(p))}</code></li>`;
-                });
-                html += `</ul>`;
-            }
-
-            if(res.citations && res.citations.length > 0) {
-                html += `<h4>Citations / Evidence</h4><ul>`;
-                res.citations.forEach(c => {
-                    html += `<li>[${escapeHtml(c.doc_id || '?')}] ${escapeHtml(c.title || 'Unknown Title')}</li>`;
-                });
-                html += `</ul>`;
-            } else if(res.trace && res.trace.evidence_history) {
-                // Agentic chunks
-                let ev = res.trace.evidence_history.collected || [];
-                if(ev.length > 0) {
-                    html += `<h4>Evidence Chunks</h4><ul>`;
-                    ev.forEach(c => {
-                        html += `<li>[${escapeHtml(c.doc_id || '?')}] ${escapeHtml(c.title || 'Unknown Title')}</li>`;
-                    });
-                    html += `</ul>`;
-                }
-            }
 
             if(evalData && Object.keys(evalData).length > 0) {
                 if(evalData.error) {
@@ -455,62 +574,20 @@ def generate_index_html():
                 } else {
                     let evalStr = `Score: ${evalData.score}/100, Verdict: ${evalData.verdict}, Grounded: ${evalData.grounded}`;
                     html += `<h4>Evaluation</h4><p>${evalStr}</p>`;
-                    if(evalData.reason) html += `<p><em>Reason: ${escapeHtml(evalData.reason)}</em></p>`;
                     document.getElementById('sum_eval_' + sumId).innerText = evalData.score !== undefined ? evalData.score : 'N/A';
                 }
             } else {
                 document.getElementById('sum_eval_' + sumId).innerText = 'Not evaluated';
             }
-
-            if(id === 'agentic' && res.trace) {
-                let steps = res.trace.steps || [];
-                let stopReason = res.trace.stopping_reason || 'unknown';
-                let tools = res.trace.tools_used || [];
-                let actionSeq = steps.map(s => s.action || 'unknown');
-
-                html += `<h4>Agentic Trace</h4><ul>
-                    <li>Steps: ${steps.length}</li>`;
-                if(steps.length > 0) {
-                    html += `<li>Action Sequence: ${actionSeq.map(a => escapeHtml(a)).join(' &rarr; ')}</li>`;
-                }
-                if(tools.length > 0) {
-                    html += `<li>Tools Used: ${tools.map(t => escapeHtml(t)).join(', ')}</li>`;
-                }
-
-                let retMethods = new Set();
-                let strategyChanges = [];
-                steps.forEach(s => {
-                    if(s.action === 'vector_search' || s.action === 'graph_expansion' || s.action === 'document_retrieval' || s.action === 'entity_linking' || s.action === 'multi_hop_reasoning') {
-                        retMethods.add(s.action);
-                    }
-                    if(s.result && s.result.strategy_changes) {
-                        strategyChanges = strategyChanges.concat(s.result.strategy_changes);
-                    }
-                });
-
-                if(retMethods.size > 0) {
-                    html += `<li>Retrieval Methods: ${Array.from(retMethods).map(m => escapeHtml(m)).join(', ')}</li>`;
-                }
-
-                if(strategyChanges.length > 0) {
-                    html += `<li>Strategy Changes:<ul>`;
-                    strategyChanges.forEach(sc => {
-                        html += `<li>${escapeHtml(sc)}</li>`;
-                    });
-                    html += `</ul></li>`;
-                }
-
-                html += `<li>Stopping Reason: ${escapeHtml(stopReason)}</li>
-                </ul>`;
-            }
-
             div.innerHTML = html;
         }
+
+        window.onload = initDashboard;
     </script>
 </body>
 </html>
 """
-    return head_html + live_html.replace("<!-- BENCH_HTML -->", bench_html)
+    return head_html
 
 class DashboardHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
